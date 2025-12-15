@@ -14,7 +14,7 @@ except ImportError:
     sys.exit(1)
 
 # --- KONFIGURATION ---
-PORT = "/dev/cu.usbserial-140"  # <--- BITTE ANPASSEN!
+PORT = "/dev/cu.usbserial-120"  # <--- BITTE ANPASSEN!
 BAUD_RATE = 115200
 LOG_FILE = f"qa_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
