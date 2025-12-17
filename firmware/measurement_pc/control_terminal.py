@@ -20,7 +20,7 @@ LOG_FILE = f"qa_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
 # --- MECHANIK ---
 STEPS_PER_MM = 800.0
-STEPS_PER_DEG = 16.515
+STEPS_PER_DEG = 16.156
 
 
 # --- DEMO LIMITS (Hier Ihre Werte eintragen!) ---
@@ -233,8 +233,29 @@ def main():
                         write_i8(ser, Axis.V)
 
             elif cmd == 'm':  # Move
-                if len(parts) < 4:
-                    print("Syntax: m [h/v/r] [ziel] [speed]")
+                # Neuer Spezialbefehl: m zp (Zero Position)
+                if len(parts) >= 2 and parts[1] == 'zp':
+                    try:
+                        # Standard-Geschwindigkeit 20, falls nichts angegeben
+                        speed = 20.0
+                        if len(parts) >= 3:
+                            speed = float(parts[2])
+
+                        print(f"-> Fahre ALLE Achsen auf 0 (Speed={speed})...")
+
+                        # Befehle nacheinander senden
+                        # Hinweis: Wenn der Arduino-Code nicht blockierend ist,
+                        # fahren sie "gleichzeitig".
+                        send_move(ser, Axis.H, 0.0, 20)
+                        send_move(ser, Axis.V, 0.0, 20)
+                        send_move(ser, Axis.R, 0.0, 20)
+
+                    except ValueError:
+                        print("Fehler: Speed muss eine Zahl sein (z.B. 'm zp 20').")
+
+                # Bestehender Befehl für Einzelachsen
+                elif len(parts) < 4:
+                    print("Syntax: m [h/v/r] [ziel] [speed] ODER m zp [speed]")
                 else:
                     try:
                         ax = parts[1]
@@ -246,7 +267,7 @@ def main():
                             send_move(ser, Axis.V, tgt, spd)
                         elif ax == 'r':
                             send_move(ser, Axis.R, tgt, spd)
-                    except:
+                    except ValueError:
                         print("Zahlen bitte!")
 
     except KeyboardInterrupt:
