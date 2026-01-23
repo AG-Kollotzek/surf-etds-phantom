@@ -31,6 +31,9 @@ LIMIT_V_MIN = -40.0  # mm
 LIMIT_R_MAX = 90.0  # Grad
 LIMIT_R_MIN = -90.0  # Grad
 
+# --- STATUS VARIABLEN ---
+r_axis_ready = False  # Wird erst True, wenn 'h r' gesendet wurde
+logging_active = False
 
 # --- PROTOKOLL DEFINITIONEN ---
 class Order:
@@ -50,6 +53,7 @@ class Axis:
 # --- GLOBALE STATUS VARIABLEN ---
 current_status = {"pos_h": 0, "pos_v": 0, "pos_r": 0, "alm": False, "homing": False}
 stop_event = threading.Event()
+
 
 
 # --- HINTERGRUND THREAD: Logging & Empfang ---
