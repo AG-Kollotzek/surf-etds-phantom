@@ -22,14 +22,13 @@ LOG_FILE = f"qa_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 STEPS_PER_MM = 800.0
 STEPS_PER_DEG = 16.156
 
-
-# --- DEMO LIMITS (Hier Ihre Werte eintragen!) ---
-LIMIT_H_MAX = 40.0  # mm
-LIMIT_H_MIN = -40.0  # mm
-LIMIT_V_MAX = 40.0  # mmh
-LIMIT_V_MIN = -40.0  # mm
-LIMIT_R_MAX = 90.0  # Grad
-LIMIT_R_MIN = -90.0  # Grad
+# --- ESTRO/SGRT LIMITS (KORRIGIERT) ---
+LIMIT_H_MAX = 41.0
+LIMIT_H_MIN = -5.0
+LIMIT_V_MAX = 61.5
+LIMIT_V_MIN = -5.0
+LIMIT_R_MAX = 20.0  # Begrenzung für Kabelschutz
+LIMIT_R_MIN = -20.0  # Begrenzung für Kabelschutz
 
 
 # --- PROTOKOLL DEFINITIONEN ---
@@ -49,6 +48,7 @@ class Axis:
 
 # --- GLOBALE STATUS VARIABLEN ---
 current_status = {"pos_h": 0, "pos_v": 0, "pos_r": 0, "alm": False, "homing": False}
+r_axis_ready = False  # Sicherheits-Flag für die Rotation
 stop_event = threading.Event()
 
 
@@ -78,17 +78,20 @@ def serial_listener(ser):
 
                         is_alarm = (status_byte & 0b00001110) > 0
                         if is_alarm and not current_status["alm"]:
-                            print("\n!!! ALARM DETEKTIERT !!!")
+                            print("\n!!! ALARM DETEKTIERT (Treiber-Fehler) !!!")
                         current_status["alm"] = is_alarm
-
             except Exception:
                 pass
 
 
 # --- HILFSFUNKTIONEN ---
 def send_move(ser, axis_id, target_val, speed_val):
-    """Sendet nur den Befehl (Non-blocking)"""
+    """Überprüft Limits und sendet Move-Befehl"""
+    # Software-Limit Check in Python
     if axis_id == Axis.R:
+        if not (LIMIT_R_MIN <= target_val <= LIMIT_R_MAX):
+            print(f"Abbruch: Ziel {target_val}° außerhalb Limit ({LIMIT_R_MIN} bis {LIMIT_R_MAX})")
+            return
         steps = int(target_val * STEPS_PER_DEG)
         speed = int(speed_val * STEPS_PER_DEG)
     else:
@@ -102,92 +105,58 @@ def send_move(ser, axis_id, target_val, speed_val):
 
 
 def move_blocking(ser, axis_id, target_val, speed_val):
-    """
-    Berechnet die Fahrzeit, sendet Befehl und wartet, bis die Fahrt fertig ist.
-    """
-    # 1. Aktuelle Position holen (Steps)
+    """Berechnet Fahrzeit und wartet (Blocking)"""
     curr_steps = 0
-    steps_unit = 0
+    steps_unit = STEPS_PER_MM
 
     if axis_id == Axis.H:
         curr_steps = current_status["pos_h"]
-        steps_unit = STEPS_PER_MM
     elif axis_id == Axis.V:
         curr_steps = current_status["pos_v"]
-        steps_unit = STEPS_PER_MM
     elif axis_id == Axis.R:
         curr_steps = current_status["pos_r"]
         steps_unit = STEPS_PER_DEG
 
-    # 2. Ziel (Steps)
     targ_steps = int(target_val * steps_unit)
-
-    # 3. Distanz & Zeit berechnen
     dist_steps = abs(targ_steps - curr_steps)
     speed_steps = abs(speed_val * steps_unit)
 
-    if speed_steps == 0: return  # Division durch 0 verhindern
+    if speed_steps == 0: return
 
     travel_time = dist_steps / speed_steps
-
-    # 4. Senden & Warten (mit 0.2s Puffer für Rampe)
-    print(f"-> Fahre zu {target_val} (Dauer ca. {travel_time:.1f}s)...")
+    print(f"-> Fahre Achse {axis_id} zu {target_val} (ca. {travel_time:.1f}s)...")
     send_move(ser, axis_id, target_val, speed_val)
-    time.sleep(travel_time + 0.2)
+    time.sleep(travel_time + 0.3)  # Puffer für Beschleunigungsrampe
 
 
-# --- DEMO FUNKTION ---
+# --- DEMO FUNKTION (AKTUALISIERT) ---
 def run_demo_1(ser):
-    print("\n--- STARTE DEMO 1 ---")
-    print("Drücke STRG+C um jederzeit abzubrechen!")
+    if not r_axis_ready:
+        print("\n[FEHLER] Demo kann nicht starten: R-Achse ist nicht initialisiert!")
+        print("Bitte zuerst 'h r' ausführen (Laser-Ausrichtung).")
+        return
 
+    print("\n--- STARTE QA-DEMO 1 (ESTRO Validierung) ---")
     try:
-        # --- H ACHSE ---
-        move_blocking(ser, Axis.H, LIMIT_H_MAX, 20)
-        print("Wait 1s...")
-        time.sleep(1)
+        # Achsen nacheinander testen
+        move_blocking(ser, Axis.H, 20.0, 10.0)
+        move_blocking(ser, Axis.H, 0.0, 10.0)
 
-        move_blocking(ser, Axis.H, LIMIT_H_MIN, 20)
-        print("Wait 1s...")
-        time.sleep(1)
+        move_blocking(ser, Axis.V, 20.0, 10.0)
+        move_blocking(ser, Axis.V, 0.0, 10.0)
 
-        move_blocking(ser, Axis.H, 0, 20)
-        print("Wait 1s...")
-        time.sleep(1)
+        move_blocking(ser, Axis.R, 15.0, 5.0)
+        move_blocking(ser, Axis.R, -15.0, 5.0)
+        move_blocking(ser, Axis.R, 0.0, 5.0)
 
-        # --- V ACHSE ---
-        move_blocking(ser, Axis.V, LIMIT_V_MAX, 20)
-        print("Wait 1s...")
-        time.sleep(1)
-
-        move_blocking(ser, Axis.V, LIMIT_V_MIN, 20)
-        print("Wait 1s...")
-        time.sleep(1)
-
-        move_blocking(ser, Axis.V, 0, 20)
-        print("Wait 1s...")
-        time.sleep(1)
-
-        # --- R ACHSE ---
-        move_blocking(ser, Axis.R, LIMIT_R_MAX, 30)
-        print("Wait 1s...")
-        time.sleep(1)
-
-        move_blocking(ser, Axis.R, LIMIT_R_MIN, 30)
-        print("Wait 1s...")
-        time.sleep(1)
-
-        move_blocking(ser, Axis.R, 0, 30)
-
-        print("--- DEMO 1 ABGESCHLOSSEN ---")
-
+        print("--- DEMO 1 ERFOLGREICH BEENDET ---")
     except KeyboardInterrupt:
-        print("\nDEMO ABBRUCH! STOPPE ALLES.")
         write_i8(ser, Order.STOP_ALL)
 
 
 # --- HAUPTPROGRAMM ---
 def main():
+    global r_axis_ready
     try:
         ser = open_serial_port(serial_port=PORT, baudrate=BAUD_RATE)
     except Exception as e:
@@ -198,8 +167,8 @@ def main():
     t.start()
 
     print("-" * 50)
-    print("ETD QA COMMANDER")
-    print("Befehle: 'demo_1', 'h [h/v]', 'm [achse] [pos] [vel]', 'p', 's', 'q'")
+    print("ETD QA COMMANDER v1.2 (SGRT Safety Enabled)")
+    print("Befehle: 'h [h/v/r]', 'm [h/v/r] [pos] [spd]', 'm zp', 'demo_1', 'p', 's', 'q'")
     print("-" * 50)
 
     try:
@@ -213,62 +182,58 @@ def main():
                 break
             elif cmd == 's':
                 write_i8(ser, Order.STOP_ALL)
-                print("STOP!")
+                print("STOP-Befehl gesendet!")
 
             elif cmd == 'p':
-                print(
-                    f"H={current_status['pos_h'] / STEPS_PER_MM:.1f} | V={current_status['pos_v'] / STEPS_PER_MM:.1f} | R={current_status['pos_r'] / STEPS_PER_DEG:.1f}")
+                print(f"POSITIONEN: H={current_status['pos_h'] / STEPS_PER_MM:.2f}mm | "
+                      f"V={current_status['pos_v'] / STEPS_PER_MM:.2f}mm | "
+                      f"R={current_status['pos_r'] / STEPS_PER_DEG:.2f}°")
 
             elif cmd == 'demo_1':
                 run_demo_1(ser)
 
-            elif cmd == 'h':  # Homing
+            elif cmd == 'h':
                 if len(parts) < 2:
-                    print("Achse? (h, v)")
+                    print("Welche Achse? (h, v, r)")
+                    continue
+
+                if parts[1] == 'r':
+                    print("\n[SICHERHEITS-CHECK ROTATION]")
+                    print("1. Kabelverlauf geprüft? (Kein Abreißen bei +/- 20°?)")
+                    print("2. Phantom waagerecht mit Lasern ausgerichtet?")
+                    confirm = input("Bestätigen mit 'y': ")
+                    if confirm.lower() == 'y':
+                        write_i8(ser, Order.HOME_AXIS)
+                        write_i8(ser, Axis.R)
+                        r_axis_ready = True
+                        print("-> R-Achse auf Null gesetzt und freigeschaltet.")
+                    else:
+                        print("-> Homing abgebrochen.")
                 else:
                     write_i8(ser, Order.HOME_AXIS)
-                    if parts[1] == 'h':
-                        write_i8(ser, Axis.H)
-                    elif parts[1] == 'v':
-                        write_i8(ser, Axis.V)
+                    write_i8(ser, Axis.H if parts[1] == 'h' else Axis.V)
 
-            elif cmd == 'm':  # Move
-                # Neuer Spezialbefehl: m zp (Zero Position)
+            elif cmd == 'm':
                 if len(parts) >= 2 and parts[1] == 'zp':
-                    try:
-                        # Standard-Geschwindigkeit 20, falls nichts angegeben
-                        speed = 20.0
-                        if len(parts) >= 3:
-                            speed = float(parts[2])
+                    if not r_axis_ready:
+                        print("FEHLER: R-Achse nicht bereit! Bitte erst 'h r' ausführen.")
+                        continue
+                    speed = float(parts[2]) if len(parts) >= 3 else 20.0
+                    print(f"-> Fahre simultan auf Null (Speed={speed})...")
+                    send_move(ser, Axis.H, 0.0, speed)
+                    send_move(ser, Axis.V, 0.0, speed)
+                    send_move(ser, Axis.R, 0.0, speed)
 
-                        print(f"-> Fahre ALLE Achsen auf 0 (Speed={speed})...")
+                elif len(parts) == 4:
+                    ax_char, tgt, spd = parts[1], float(parts[2]), float(parts[3])
+                    if ax_char == 'r' and not r_axis_ready:
+                        print("GESPERRT: Bitte zuerst 'h r' (Laser-Homing) durchführen.")
+                        continue
 
-                        # Befehle nacheinander senden
-                        # Hinweis: Wenn der Arduino-Code nicht blockierend ist,
-                        # fahren sie "gleichzeitig".
-                        send_move(ser, Axis.H, 0.0, 20)
-                        send_move(ser, Axis.V, 0.0, 20)
-                        send_move(ser, Axis.R, 0.0, 20)
-
-                    except ValueError:
-                        print("Fehler: Speed muss eine Zahl sein (z.B. 'm zp 20').")
-
-                # Bestehender Befehl für Einzelachsen
-                elif len(parts) < 4:
-                    print("Syntax: m [h/v/r] [ziel] [speed] ODER m zp [speed]")
+                    target_axis = Axis.H if ax_char == 'h' else (Axis.V if ax_char == 'v' else Axis.R)
+                    send_move(ser, target_axis, tgt, spd)
                 else:
-                    try:
-                        ax = parts[1]
-                        tgt = float(parts[2])
-                        spd = float(parts[3])
-                        if ax == 'h':
-                            send_move(ser, Axis.H, tgt, spd)
-                        elif ax == 'v':
-                            send_move(ser, Axis.V, tgt, spd)
-                        elif ax == 'r':
-                            send_move(ser, Axis.R, tgt, spd)
-                    except ValueError:
-                        print("Zahlen bitte!")
+                    print("Syntax: m [h/v/r] [ziel] [speed] ODER m zp")
 
     except KeyboardInterrupt:
         pass
