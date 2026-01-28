@@ -92,6 +92,7 @@ class AxisWorker(QObject):
             while self.running:
                 if not self.queue.empty():
                     order_id, params = self.queue.get()
+                    print(f"DEBUG Axis: Sende Befehl {order_id} mit Params {params}")ho
                     write_i8(ser, order_id)
                     for p in params:
                         # Unterscheidung i8/i32 für die Protokollstruktur
@@ -132,6 +133,7 @@ class HeatingWorker(QObject):
                 # 2. Daten EMPFANGEN
                 if ser.in_waiting >= 1:
                     header = read_i8(ser)
+                    print(f"DEBUG Heat: Header empfangen: {header}")
                     if header == Order.LOG_DATA:
                         _ = read_i32(ser)  # millis ignorieren, wir nutzen Systemzeit
                         tA = read_i32(ser) / 100.0
@@ -165,8 +167,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ETD QA Unified Platform - 10Hz Log")
-        self.cmd_queue = queue.Queue()
-
+        self.cmd_queue = queue.Queue() #achsen
+        self.heat_queue = queue.Queue()  # NEU: Für die Heizung
         # Plot-Daten Puffer
         self.plot_times = []
         self.plot_temp_a = []
@@ -208,7 +210,7 @@ class MainWindow(QMainWindow):
 
         self.console = QTextEdit()
         self.console.setReadOnly(True)
-        self.console.setStyleSheet("background-color: #111; color: #0f0; font-family: monospace;")
+        self.console.setStyleSheet("background-color: #111; color: #0f0; font-family: 'Menlo';")
         layout.addWidget(self.console)
 
         self.cmd_input = QLineEdit()
@@ -217,19 +219,22 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.cmd_input)
 
     def start_threads(self):
-        ports = [p.device for p in list_ports.comports()]
-        if len(ports) >= 2:
-            # HINWEIS: Portzuordnung muss ggf. getauscht werden
-            self.axis_worker = AxisWorker(ports[0], self.cmd_queue)
+        # Anstatt der Automatik direkt die Namen nutzen:
+        axis_port = "/dev/cu.usbserial-120"  # DEIN ACHSEN-PORT
+        heat_port = "/dev/cu.usbserial-140"  # DEIN HEIZ-PORT
+
+        try:
+            self.axis_worker = AxisWorker(axis_port, self.cmd_queue)
             self.axis_thread = threading.Thread(target=self.axis_worker.run, daemon=True)
             self.axis_thread.start()
 
-            self.heat_worker = HeatingWorker(ports[1])
+            self.heat_worker = HeatingWorker(heat_port, self.heat_queue)  # Wichtig: heat_queue mitgeben
             self.heat_thread = threading.Thread(target=self.heat_worker.run, daemon=True)
             self.heat_thread.start()
-            self.log(f"System gestartet. Logging: 10Hz -> {self.csv_filename}")
-        else:
-            self.log("WARNUNG: Zu wenige Arduinos gefunden!")
+
+            self.log(f"Verbunden: Axis an {axis_port}, Heat an {heat_port}")
+        except Exception as e:
+            self.log(f"Verbindungsfehler: {e}")
 
     def tick(self):
         """ Zentraler 10Hz Herzschlag für Logging und UI """
