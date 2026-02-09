@@ -2,46 +2,49 @@ import sys
 import time
 import queue
 import threading
-import csv
 from datetime import datetime
-import numpy as np
-import pandas as pd
 import serial
 import serial.tools.list_ports as list_ports
 
-from PySide6.QtCore import Qt, QTimer, Signal, QObject
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QGridLayout, QFrame, QTextEdit, QMessageBox
+    QLabel, QLineEdit, QFrame, QTextEdit
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-# ================= CONFIGURATION =================
+# ================= KONFIGURATION =================
+AXIS_PORT = "/dev/cu.usbserial-120"
+HEAT_PORT = "/dev/cu.usbserial-140"
 BAUD_RATE = 115200
-LOG_RATE_HZ = 10  # 10Hz Logging
-UI_REFRESH_MS = int(1000 / LOG_RATE_HZ)
+
+# Mechanik
+STEPS_PER_MM = 800.0
+STEPS_PER_DEG = 16.156
 
 
-class Order:
-    HELLO = 0
+# ================= PROTOKOLL (BINÄR) =================
+# Achsen (Bestehend)
+class AxisOrder:
+    LOG_DATA = 10
     MOVE_AXIS = 1
     HOME_AXIS = 2
-    SET_SETPOINT = 5
-    HEATER_STOP = 6
+    STOP_ALL = 3
     COMMAND_DONE = 4
-    LOG_DATA = 10
 
 
-class Axis:
+# Heizung (NEU - Passend zur neuen Firmware)
+class HeatOrder:
+    LOG_DATA = 10  # [Header, Time(i32), TempA(i32), TempB(i32)]
+    SET_A = 1  # [Header, Val(i32)]
+    SET_B = 2  # [Header, Val(i32)]
+
+
+class AxisID:
     H = 0;
     V = 1;
     R = 2
-
-
-# Mechanische Faktoren
-STEPS_PER_MM = 800.0
-STEPS_PER_DEG = 16.156
 
 
 # ================= BINARY HELPERS =================
@@ -57,264 +60,250 @@ def read_i8(ser): return int.from_bytes(ser.read(1), 'little', signed=True)
 def read_i32(ser): return int.from_bytes(ser.read(4), 'little', signed=True)
 
 
-# ================= SYSTEM STATE =================
+# ================= SHARED STATE =================
 class SystemState:
     def __init__(self):
-        self.pos_h = 0.0
-        self.pos_v = 0.0
-        self.pos_r = 0.0
-        self.temp_a = 0.0
-        self.temp_b = 0.0
-        self.setpoint = 0.0
-        self.heating_status = 0
         self.lock = threading.Lock()
+        # Achsen
+        self.pos_h = 0.0;
+        self.pos_v = 0.0;
+        self.pos_r = 0.0
+        self.axis_ready = True
+        # Heizung
+        self.temp_a = 0.0;
+        self.temp_b = 0.0
+        self.setpoint_a = 25.0;
+        self.setpoint_b = 25.0
 
 
 state = SystemState()
 
 
-# ================= WORKER THREADS =================
-class AxisWorker(QObject):
-    log_signal = Signal(str)
-
-    def __init__(self, port, cmd_queue):
-        super().__init__()
+# ================= WORKER: ACHSEN =================
+class AxisThread(threading.Thread):
+    def __init__(self, port, cmd_queue, log_callback):
+        super().__init__(daemon=True)
         self.port = port
-        self.queue = cmd_queue
-        self.running = True
+        self.cmd_queue = cmd_queue
+        self.log = log_callback
 
     def run(self):
         try:
             ser = serial.Serial(self.port, BAUD_RATE, timeout=0.1)
-            time.sleep(2)
-            self.log_signal.emit(f"Axis-Arduino an {self.port} bereit.")
+            time.sleep(2);
+            ser.reset_input_buffer()
+            self.log(f"Achsen-Arduino verbunden: {self.port}")
 
-            while self.running:
-                if not self.queue.empty():
-                    order_id, params = self.queue.get()
-                    print(f"DEBUG Axis: Sende Befehl {order_id} mit Params {params}")ho
-                    write_i8(ser, order_id)
-                    for p in params:
-                        # Unterscheidung i8/i32 für die Protokollstruktur
-                        if abs(p) > 127:
-                            write_i32(ser, p)
-                        else:
-                            write_i8(ser, p)
+            while True:
+                # 1. Lesen
+                if ser.in_waiting:
+                    try:
+                        hdr = read_i8(ser)
+                        if hdr == AxisOrder.LOG_DATA:
+                            _ = read_i32(ser)  # Time
+                            rh = read_i32(ser);
+                            rv = read_i32(ser);
+                            rr = read_i32(ser)
+                            stat = read_i8(ser)
+                            with state.lock:
+                                state.pos_h = rh / STEPS_PER_MM
+                                state.pos_v = rv / STEPS_PER_MM
+                                state.pos_r = rr / STEPS_PER_DEG
+                        elif hdr == AxisOrder.COMMAND_DONE:
+                            with state.lock:
+                                state.axis_ready = True
+                            self.log(">> Achse: DONE")
+                    except:
+                        pass
 
-                    # Warten auf COMMAND_DONE
-                    while True:
-                        if ser.in_waiting > 0:
-                            if read_i8(ser) == Order.COMMAND_DONE: break
-                    self.queue.task_done()
-                time.sleep(0.01)
+                # 2. Senden
+                can_send = False
+                with state.lock:
+                    can_send = state.axis_ready
+
+                if can_send and not self.cmd_queue.empty():
+                    cmd, args = self.cmd_queue.get()
+                    try:
+                        write_i8(ser, cmd)
+                        for a in args:
+                            if cmd == AxisOrder.MOVE_AXIS and args.index(a) == 0:
+                                write_i8(ser, a)  # AxisID
+                            else:
+                                write_i32(ser, a)  # Steps/Speed
+
+                        if cmd in [AxisOrder.MOVE_AXIS, AxisOrder.HOME_AXIS]:
+                            with state.lock: state.axis_ready = False
+                            self.log(f">> Sende Achsbefehl {cmd}")
+                    except Exception as e:
+                        self.log(f"Fehler Axis-Write: {e}")
+
+                time.sleep(0.005)
         except Exception as e:
-            self.log_signal.emit(f"Fehler Axis: {e}")
+            self.log(f"AXIS ERROR: {e}")
 
 
-class HeatingWorker(QObject):
-    def __init__(self, port, cmd_queue):  # Queue hinzugefügt
-        super().__init__()
+# ================= WORKER: HEIZUNG (JETZT BINÄR) =================
+class HeatThread(threading.Thread):
+    def __init__(self, port, cmd_queue, log_callback):
+        super().__init__(daemon=True)
         self.port = port
-        self.queue = cmd_queue
-        self.running = True
+        self.cmd_queue = cmd_queue
+        self.log = log_callback
 
     def run(self):
         try:
             ser = serial.Serial(self.port, BAUD_RATE, timeout=0.1)
-            time.sleep(2)
-            while self.running:
-                # 1. Befehle SENDEN (falls vorhanden)
-                if not self.queue.empty():
-                    order_id, val_int = self.queue.get()
-                    write_i8(ser, order_id)
-                    write_i32(ser, val_int)
-                    self.queue.task_done()
+            time.sleep(2);
+            ser.reset_input_buffer()
+            self.log(f"Heizungs-Arduino verbunden (Binär): {self.port}")
 
-                # 2. Daten EMPFANGEN
-                if ser.in_waiting >= 1:
-                    header = read_i8(ser)
-                    print(f"DEBUG Heat: Header empfangen: {header}")
-                    if header == Order.LOG_DATA:
-                        _ = read_i32(ser)  # millis ignorieren, wir nutzen Systemzeit
-                        tA = read_i32(ser) / 100.0
-                        tB = read_i32(ser) / 100.0
-                        sp = read_i32(ser) / 100.0
-                        stat = read_i8(ser)
+            while True:
+                # 1. Lesen
+                if ser.in_waiting:
+                    try:
+                        hdr = read_i8(ser)
+                        if hdr == HeatOrder.LOG_DATA:
+                            _ = read_i32(ser)  # Time
+                            raw_a = read_i32(ser)
+                            raw_b = read_i32(ser)
+                            with state.lock:
+                                state.temp_a = raw_a / 100.0
+                                state.temp_b = raw_b / 100.0
+                    except:
+                        pass
+
+                # 2. Senden
+                while not self.cmd_queue.empty():
+                    pad_idx, val_float = self.cmd_queue.get()  # pad_idx: 1=A, 2=B
+                    val_int = int(val_float * 100)  # Float -> Int (Centi-Degree)
+
+                    try:
+                        write_i8(ser, pad_idx)  # Header (1 oder 2)
+                        write_i32(ser, val_int)  # Payload
+                        self.log(f">> Heizung {('A' if pad_idx == 1 else 'B')} -> {val_float:.2f}°C")
 
                         with state.lock:
-                            state.temp_a = tA
-                            state.temp_b = tB
-                            state.setpoint = sp
-                            state.heating_status = stat
+                            if pad_idx == 1:
+                                state.setpoint_a = val_float
+                            else:
+                                state.setpoint_b = val_float
+                    except Exception as e:
+                        self.log(f"Fehler Heat-Write: {e}")
+
                 time.sleep(0.01)
         except Exception as e:
-            print(f"Fehler Heating: {e}")
+            self.log(f"HEAT ERROR: {e}")
 
 
-# ================= GUI & PLOTTING =================
-class MplCanvas(FigureCanvas):
-    def __init__(self):
-        self.fig = Figure(figsize=(5, 3), dpi=100, facecolor='#2b2b2b')
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#1e1e1e')
-        self.ax.tick_params(colors='white')
-        self.ax.set_xlabel("Zeit [s]", color='white')
-        self.ax.set_ylabel("Temp [°C]", color='white')
-        super().__init__(self.fig)
-
-
+# ================= GUI =================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ETD QA Unified Platform - 10Hz Log")
-        self.cmd_queue = queue.Queue() #achsen
-        self.heat_queue = queue.Queue()  # NEU: Für die Heizung
-        # Plot-Daten Puffer
-        self.plot_times = []
-        self.plot_temp_a = []
-        self.plot_temp_b = []
-        self.start_time = time.time()
+        self.setWindowTitle("ETD QA Unified Terminal (Full Binary)")
+        self.resize(900, 600)
+        self.axis_q = queue.Queue()
+        self.heat_q = queue.Queue()
 
-        self.init_ui()
-        self.csv_filename = f"QA_Log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        self.init_csv()
+        # Plot Data
+        self.times = [];
+        self.ta_hist = [];
+        self.tb_hist = []
+        self.start_t = time.time()
 
-        self.start_threads()
+        self.setup_ui()
 
-        # Zentraler Timer für UI-Refresh und 10Hz-Logging
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.tick)
-        self.timer.start(UI_REFRESH_MS)
+        # Threads starten
+        AxisThread(AXIS_PORT, self.axis_q, self.log).start()
+        HeatThread(HEAT_PORT, self.heat_q, self.log).start()
 
-    def init_csv(self):
-        with open(self.csv_filename, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                ["Timestamp", "Elapsed_s", "TempA", "TempB", "Setpoint", "PosH", "PosV", "PosR", "HeaterStatus"])
+        self.timer = QTimer();
+        self.timer.timeout.connect(self.update_ui)
+        self.timer.start(100)
 
-    def init_ui(self):
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        layout = QVBoxLayout(main_widget)
+    def setup_ui(self):
+        w = QWidget();
+        self.setCentralWidget(w);
+        l = QHBoxLayout(w)
+        left = QVBoxLayout()
 
-        self.canvas = MplCanvas()
-        layout.addWidget(self.canvas)
+        self.status = QLabel("Init...")
+        self.status.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        left.addWidget(self.status)
 
-        status_frame = QFrame()
-        status_grid = QGridLayout(status_frame)
-        self.lbl_temp = QLabel("Temp A: -- | Temp B: -- | Soll: --")
-        self.lbl_pos = QLabel("Positionen: H: 0.0 | V: 0.0 | R: 0.0")
-        status_grid.addWidget(self.lbl_temp, 0, 0)
-        status_grid.addWidget(self.lbl_pos, 1, 0)
-        layout.addWidget(status_frame)
+        self.inp = QLineEdit();
+        self.inp.setPlaceholderText("Befehl (h v, m h 10 5, t a 40)")
+        self.inp.returnPressed.connect(self.parse_cmd)
+        left.addWidget(self.inp)
 
-        self.console = QTextEdit()
+        self.console = QTextEdit();
         self.console.setReadOnly(True)
-        self.console.setStyleSheet("background-color: #111; color: #0f0; font-family: 'Menlo';")
-        layout.addWidget(self.console)
+        self.console.setStyleSheet("background:#000; color:#0f0; font-family:monospace")
+        left.addWidget(self.console)
+        l.addLayout(left, 1)
 
-        self.cmd_input = QLineEdit()
-        self.cmd_input.setPlaceholderText("Befehl (m h 20 10 / t 37 / h v)...")
-        self.cmd_input.returnPressed.connect(self.handle_command)
-        layout.addWidget(self.cmd_input)
+        self.cv = FigureCanvas(Figure(figsize=(5, 4), facecolor='#2b2b2b'))
+        self.ax = self.cv.figure.add_subplot(111);
+        self.ax.set_facecolor('#1e1e1e')
+        self.ax.tick_params(colors='white')
+        l.addWidget(self.cv, 2)
 
-    def start_threads(self):
-        # Anstatt der Automatik direkt die Namen nutzen:
-        axis_port = "/dev/cu.usbserial-120"  # DEIN ACHSEN-PORT
-        heat_port = "/dev/cu.usbserial-140"  # DEIN HEIZ-PORT
+    def log(self, t):
+        print(t)  # Debug
+        # In GUI Thread über Timer/Signal wäre sauberer, aber hier quick:
+        self.console.append(t)
 
-        try:
-            self.axis_worker = AxisWorker(axis_port, self.cmd_queue)
-            self.axis_thread = threading.Thread(target=self.axis_worker.run, daemon=True)
-            self.axis_thread.start()
-
-            self.heat_worker = HeatingWorker(heat_port, self.heat_queue)  # Wichtig: heat_queue mitgeben
-            self.heat_thread = threading.Thread(target=self.heat_worker.run, daemon=True)
-            self.heat_thread.start()
-
-            self.log(f"Verbunden: Axis an {axis_port}, Heat an {heat_port}")
-        except Exception as e:
-            self.log(f"Verbindungsfehler: {e}")
-
-    def tick(self):
-        """ Zentraler 10Hz Herzschlag für Logging und UI """
-        elapsed = time.time() - self.start_time
-
-        with state.lock:
-            tA, tB, sp = state.temp_a, state.temp_b, state.setpoint
-            pH, pV, pR = state.pos_h, state.pos_v, state.pos_r
-            stat = state.heating_status
-
-        # 1. CSV Logging (10Hz)
-        with open(self.csv_filename, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([datetime.now().isoformat(), round(elapsed, 2), tA, tB, sp, pH, pV, pR, stat])
-
-        # 2. UI Updates
-        self.lbl_temp.setText(f"Temp A: {tA:.2f}°C | Temp B: {tB:.2f}°C | Soll: {sp:.1f}°C")
-        self.lbl_pos.setText(f"Positionen: H: {pH:.1f} | V: {pV:.1f} | R: {pR:.1f}")
-
-        # 3. Plot Update (Wir plotten nur neue Punkte)
-        if not self.plot_times or abs(elapsed - self.plot_times[-1]) > 0.5:
-            self.plot_times.append(elapsed)
-            self.plot_temp_a.append(tA)
-            self.plot_temp_b.append(tB)
-
-            if len(self.plot_times) > 100:  # Rolling window
-                self.plot_times.pop(0);
-                self.plot_temp_a.pop(0);
-                self.plot_temp_b.pop(0)
-
-            self.canvas.ax.clear()
-            self.canvas.ax.plot(self.plot_times, self.plot_temp_a, 'r-', label='Pad A')
-            self.canvas.ax.plot(self.plot_times, self.plot_temp_b, 'b-', label='Pad B')
-            self.canvas.ax.legend()
-            self.canvas.draw()
-
-    def handle_command(self):
-        text = self.cmd_input.text().strip().lower()
-        self.cmd_input.clear()
-        parts = text.split()
+    def parse_cmd(self):
+        txt = self.inp.text().strip().lower();
+        self.inp.clear()
+        parts = txt.split()
         if not parts: return
 
+        cmd = parts[0]
         try:
-            if parts[0] == 'm' and len(parts) == 4:  # Move: m h 10 5
-                ax_char = parts[1]
-                target = float(parts[2])
-                speed = float(parts[3])
-                ax_id = Axis.H if ax_char == 'h' else (Axis.V if ax_char == 'v' else Axis.R)
-                conv = STEPS_PER_DEG if ax_char == 'r' else STEPS_PER_MM
-
-                self.cmd_queue.put((Order.MOVE_AXIS, [ax_id, int(target * conv), int(speed * conv)]))
-
-                # Update State (Wichtig für das 10Hz Log)
-                with state.lock:
-                    if ax_id == Axis.H:
-                        state.pos_h = target
-                    elif ax_id == Axis.V:
-                        state.pos_v = target
-                    else:
-                        state.pos_r = target
-                self.log(f"Fahre {ax_char} auf {target}...")
-
-            elif parts[0] == 't' and len(parts) == 2:  # Temp: t 37.5
-                # Hier brauchen wir direkten Zugriff auf den Heizungs-Serial
-                # Im Prototyp schicken wir es über eine globale Variable oder direkt
-                # Für diese Demo setzen wir den State und der Worker müsste es senden
-                # (Zukunft: Heiz-Queue hinzufügen)
-                sp_val = int(float(parts[1]) * 100)
-                self.heat_queue.put((Order.SET_SETPOINT, sp_val))  # Jetzt aktiv!
-                self.log(f"Sollwert {parts[1]}°C an Heizung gesendet.")
-
+            if cmd == 'm' and len(parts) >= 4:  # m h 10 5
+                ax = {'h': 0, 'v': 1, 'r': 2}.get(parts[1])
+                steps = int(float(parts[2]) * (STEPS_PER_DEG if ax == 2 else STEPS_PER_MM))
+                spd = int(float(parts[3]) * (STEPS_PER_DEG if ax == 2 else STEPS_PER_MM))
+                self.axis_q.put((AxisOrder.MOVE_AXIS, [ax, steps, spd]))
+            elif cmd == 'h' and len(parts) >= 2:  # h v
+                ax = {'h': 0, 'v': 1, 'r': 2}.get(parts[1])
+                self.axis_q.put((AxisOrder.HOME_AXIS, [ax]))
+            elif cmd == 't' and len(parts) >= 3:  # t a 40
+                pad = 1 if parts[1] == 'a' else 2
+                self.heat_q.put((pad, float(parts[2])))
+            elif cmd == 's':
+                self.axis_q.put((AxisOrder.STOP_ALL, []))
         except Exception as e:
-            self.log(f"Fehler: {e}")
+            self.log(f"Cmd Err: {e}")
 
-    def log(self, msg):
-        self.console.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+    def update_ui(self):
+        with state.lock:
+            ph, pv, pr = state.pos_h, state.pos_v, state.pos_r
+            ta, tb = state.temp_a, state.temp_b
+            rdy = state.axis_ready
+
+        self.status.setText(
+            f"AXIS: H{ph:.1f} V{pv:.1f} R{pr:.1f} [{'RDY' if rdy else 'MOV'}] | TEMP: A{ta:.2f} B{tb:.2f}")
+
+        # Plot
+        t = time.time() - self.start_t
+        self.times.append(t);
+        self.ta_hist.append(ta);
+        self.tb_hist.append(tb)
+        if len(self.times) > 100:
+            self.times.pop(0);
+            self.ta_hist.pop(0);
+            self.tb_hist.pop(0)
+
+        if len(self.times) % 5 == 0:
+            self.ax.clear();
+            self.ax.grid(alpha=0.2)
+            self.ax.plot(self.times, self.ta_hist, 'r');
+            self.ax.plot(self.times, self.tb_hist, 'b')
+            self.cv.draw()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+    MainWindow().show();
     sys.exit(app.exec())
