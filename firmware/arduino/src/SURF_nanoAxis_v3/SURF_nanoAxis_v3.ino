@@ -105,7 +105,10 @@ void moveAxis(int8_t axis, long target, long speed) {
 
 // --- HOMING FUNKTION (Robust & Blockierend wie in v1.2) ---
 void doHoming(int8_t axis) {
-  AccelStepper* st; int pin_end; int sign; float offset;
+  AccelStepper* st;
+  int pin_end;
+  int sign;
+  float offset;
 
   if (axis == AXIS_H) {
     st = &stepper_h; pin_end = PIN_END_H; sign = HOMING_SIGN_H; offset = HOME_OFFSET_MM_H;
@@ -115,61 +118,62 @@ void doHoming(int8_t axis) {
     stepper_r.setCurrentPosition(0); return;
   } else return;
 
-  // 1. Freifahren falls gedrückt
-  if (digitalRead(pin_end) == LOW) { // LOW = Active (Gedrückt bei NC?) -> v1.2 sagt readEndRawTriggered(HIGH)??
-     // Moment: v1.2 readEndRawTriggered returned (digitalRead == HIGH).
-     // INPUT_PULLUP: Unpressed = HIGH, Pressed = LOW (gegen GND).
-     // Wenn v1.2 sagt "readEndRawTriggered = (digitalRead == HIGH)", dann sind es NO (Normally Open) Schalter?
-     // ODER NC Schalter in Reihe?
-     // Standard NC Switch gegen GND: Pin ist LOW wenn NICHT gedrückt (Strom fließt), HIGH wenn gedrückt (Unterbrochen)?
-     // NEIN: Standard NC gegen GND: Pin ist LOW (Verbindung zu GND). Wenn gedrückt -> Offen -> Pullup zieht auf HIGH.
-     // Also: HIGH = Gedrückt. LOW = Frei.
-
-     // Wir nehmen die Logik aus v1.2 1:1:
-     // readEndRawTriggered war (digitalRead == HIGH).
-
-     // Backoff
-     st->setMaxSpeed(HOMING_SPEED_SLOW * STEPS_PER_MM);
-     st->move(-sign * BACKOFF_MM * STEPS_PER_MM);
-     while(st->distanceToGo() != 0) st->run();
-  }
-
-  // 2. Schnelle Suche (Fast)
+  // --- PHASE 1: Schnelle Suche ---
   long fast_spd = HOMING_SPEED_FAST * STEPS_PER_MM;
   st->setMaxSpeed(fast_spd);
   st->setSpeed(sign * fast_spd);
 
-  // Warte bis HIGH (Gedrückt laut v1.2 Logic)
-  while (digitalRead(pin_end) == LOW) {
+  // Wir fahren so lange, bis der Schalter wirklich stabil auf HIGH geht (v1.2 Logik)
+  bool confirmed = false;
+  while (!confirmed) {
     st->runSpeed();
-    if (Serial.available()>0 && Serial.peek()==STOP_ALL) { Serial.read(); return; }
-  }
-  st->stop(); st->setCurrentPosition(0); delay(200);
 
-  // 3. Freifahren (Backoff)
+    // Prüfe Schalter: Muss HIGH sein (Gedrückt)
+    if (digitalRead(pin_end) == HIGH) {
+      // Kurzer Check, ob es kein Rauschen ist:
+      delay(10); // 10ms warten
+      if (digitalRead(pin_end) == HIGH) confirmed = true; // Stabil ausgelöst!
+    }
+
+    // Not-Stopp Check während der Fahrt
+    if (Serial.available() > 0 && Serial.peek() == STOP_ALL) {
+      Serial.read();
+      st->stop();
+      return;
+    }
+  }
+
+  st->stop();
+  st->setCurrentPosition(0);
+  delay(200);
+
+  // --- PHASE 2: Freifahren (Backoff) ---
+  // Wir fahren ein Stück weg, damit der Schalter wieder frei wird
   st->setMaxSpeed(HOMING_SPEED_SLOW * STEPS_PER_MM);
   st->moveTo(-sign * BACKOFF_MM * STEPS_PER_MM);
-  while (digitalRead(pin_end) == HIGH) { st->run(); } // Warte bis wieder LOW (Frei)
-  st->stop(); st->setCurrentPosition(0); delay(200);
+  while (st->distanceToGo() != 0) st->run();
+  delay(200);
 
-  // 4. Langsame Suche (Slow) - 2. Pass für Präzision
-  long slow_spd = HOMING_SPEED_SLOW * STEPS_PER_MM;
-  st->setMaxSpeed(slow_spd);
-  st->setSpeed(sign * slow_spd);
+  // --- PHASE 3: Langsame Präzisions-Suche ---
+  st->setSpeed(sign * (HOMING_SPEED_SLOW * STEPS_PER_MM));
   while (digitalRead(pin_end) == LOW) {
     st->runSpeed();
   }
-  st->stop(); st->setCurrentPosition(0); delay(200);
+  st->stop();
+  st->setCurrentPosition(0);
+  delay(200);
 
-  // 5. Offset anfahren (Arbeitsnullpunkt)
-  // Achtung: v1.2 setzt hier setCurrentPosition(offset).
-  // Das heißt, der Schalter IST Position "Offset". Wenn ich auf 0 fahre, fahre ich "Offset" mm zurück.
+  // --- PHASE 4: Offset auf Arbeits-Nullpunkt ---
+  // Wir setzen die Position auf den im Guideline definierten Offset
   st->setCurrentPosition((long)(offset * STEPS_PER_MM));
 
-  // Fahre zu 0
+  // Fahre jetzt zur logischen Null (Referenzpunkt der QA-Plattform)
   st->setMaxSpeed(fast_spd);
   st->moveTo(0);
   while(st->distanceToGo() != 0) st->run();
+
+  // Finaler Log für die GUI
+  // write_i8(COMMAND_DONE); // Wird im switch-case nach dem Funktionsaufruf erledigt
 }
 
 void setup() {
@@ -184,6 +188,7 @@ void setup() {
 
   pinMode(PIN_ALM_H, INPUT_PULLUP);
   pinMode(PIN_ALM_V, INPUT_PULLUP);
+  pinMode(13, OUTPUT);
 
   // Default Beschleunigung aus v1.2
   stepper_h.setAcceleration(80.0 * STEPS_PER_MM);
@@ -196,6 +201,13 @@ void setup() {
 }
 
 void loop() {
+// TEST-FUNKTION: LED 13 leuchtet, wenn Schalter H ODER Schalter V gedrückt ist
+  // Da du NC-Schalter nutzt (HIGH = Gedrückt/Unterbrochen), prüfen wir auf HIGH:
+  if (digitalRead(PIN_END_H) == HIGH || digitalRead(PIN_END_V) == HIGH) {
+    digitalWrite(13, HIGH);
+  } else {
+    digitalWrite(13, LOW);
+  }
   // 1. Alarm Überwachung (CL57T ALM ist LOW bei Fehler)
   if (digitalRead(PIN_ALM_H) == LOW || digitalRead(PIN_ALM_V) == LOW) {
     stepper_h.stop(); stepper_v.stop(); stepper_r.stop();
@@ -238,4 +250,4 @@ void loop() {
       write_i8(COMMAND_DONE);
     }
   }
-}
+}do
