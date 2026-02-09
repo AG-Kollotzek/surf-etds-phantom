@@ -1,18 +1,16 @@
 /*
- * SURF_nanoHeating_Binary.ino
- * Binäre Firmware für Brainlab ExacTrac TestUnit - Heizung
- * * Protokoll:
- * - Empfang (PC -> Arduino):
- * Header 0x01: Setze Sollwert A (gefolgt von int32 in centi-degree)
- * Header 0x02: Setze Sollwert B (gefolgt von int32 in centi-degree)
- * - Senden (Arduino -> PC):
- * Header 0x0A: Log Daten [Time(i32), TempA(i32), TempB(i32)] (alle centi-degree)
+ * SURF_nanoHeating_Binary_Final
+ * * Basiert auf Ihrer Logik:
+ * - PI-Regler (Kp=0.4, Ki=0.02)
+ * - Anti-Windup (Integral nur bei < 2.0°C Abweichung)
+ * - Soft-PWM mit 4000ms Fenster
+ * * NEU: Binäres Protokoll für Stabilität mit SURF_Terminal_V2.py
  */
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// ---------- Hardware Pins ----------
+// ---------- Hardware Pins (Identisch zu Ihrem Code) ----------
 #define ONE_WIRE_PIN_A 2
 #define ONE_WIRE_PIN_B 3
 #define MOSFET_A_PIN   5
@@ -20,13 +18,14 @@
 
 const float MAX_SAFE_TEMP = 50.0f;
 
-// ---------- Regler ----------
+// ---------- Regler-Parameter (Aus Ihrem Code übernommen) ----------
+// Hinweis: Ihr Code war ein PI-Regler (kein D-Anteil). Das ist für Heizungen optimal.
 const float KP = 0.40f;
 const float KI = 0.02f;
-const float MAX_I = 0.5f;
-const unsigned long WINDOW_MS = 4000;
+const float MAX_I = 0.5f;        // Anti-Windup Limit
+const unsigned long WINDOW_MS = 4000; // PWM Fensterbreite
 
-// Protokoll Definitionen
+// Protokoll Header (Muss zum Python-Script passen)
 #define CMD_SET_A 1
 #define CMD_SET_B 2
 #define RES_LOG   10
@@ -40,18 +39,22 @@ struct Heater {
   float currentDuty;
 };
 
+// Initialisierung mit 25.0°C Startwert
 Heater padA = {MOSFET_A_PIN, 25.0, 0.0, 0, false, 0.0};
 Heater padB = {MOSFET_B_PIN, 25.0, 0.0, 0, false, 0.0};
 
+// Sensoren
 OneWire oneWireA(ONE_WIRE_PIN_A);
 DallasTemperature sensorsA(&oneWireA);
 OneWire oneWireB(ONE_WIRE_PIN_B);
 DallasTemperature sensorsB(&oneWireB);
 
-// --- Binär-Helfer ---
+// --- Binär-Helfer Funktionen ---
 long read_i32() {
   long val = 0;
-  Serial.readBytes((char*)&val, 4);
+  if (Serial.available() >= 4) {
+    Serial.readBytes((char*)&val, 4);
+  }
   return val;
 }
 
@@ -63,7 +66,9 @@ void write_i8(int8_t val) {
   Serial.write(val);
 }
 
+// --- Ihre Original Regelungs-Logik ---
 void updateHeater(Heater &h, float currentTemp) {
+  // 1. Sicherheits-Check
   if (isnan(currentTemp) || currentTemp > MAX_SAFE_TEMP || currentTemp < -50.0) {
     digitalWrite(h.pin, LOW);
     h.state = false;
@@ -71,23 +76,35 @@ void updateHeater(Heater &h, float currentTemp) {
     return;
   }
 
+  // 2. PI-Berechnung
   float error = h.setpoint - currentTemp;
+
+  // Integral nur aufsummieren, wenn wir nah am Ziel sind (< 2°C)
+  // Das verhindert "Windup" beim Aufheizen
   if (fabs(error) < 2.0) {
     h.integral += error * KI;
-    h.integral = constrain(h.integral, 0, MAX_I);
+    h.integral = constrain(h.integral, 0, MAX_I); // Limitieren
   } else {
     h.integral = 0;
   }
 
+  // P + I Output berechnen
   h.currentDuty = (error * KP) + h.integral;
-  h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);
+  h.currentDuty = constrain(h.currentDuty, 0.0, 1.0); // 0% bis 100%
 
+  // 3. Soft-PWM (4 Sekunden Fenster)
   unsigned long now = millis();
-  if (now - h.windowStart >= WINDOW_MS) h.windowStart = now;
+  if (now - h.windowStart >= WINDOW_MS) {
+    h.windowStart = now;
+  }
 
+  // Entscheidung: AN oder AUS für diesen Moment im Fenster
   bool shouldBeOn = (now - h.windowStart) < (h.currentDuty * WINDOW_MS);
+
+  // Wenn Temperatur erreicht ist, Sicherheitshalber aus (Bang-Bang Override)
   if (currentTemp >= h.setpoint) shouldBeOn = false;
 
+  // Schalten
   if (shouldBeOn != h.state) {
     h.state = shouldBeOn;
     digitalWrite(h.pin, h.state ? HIGH : LOW);
@@ -95,7 +112,8 @@ void updateHeater(Heater &h, float currentTemp) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200); // Wichtig: Muss mit Python BAUD übereinstimmen
+
   pinMode(padA.pin, OUTPUT);
   pinMode(padB.pin, OUTPUT);
   digitalWrite(padA.pin, LOW);
@@ -103,6 +121,7 @@ void setup() {
 
   sensorsA.begin();
   sensorsB.begin();
+  // Nicht blockieren beim Lesen der Temperatur
   sensorsA.setWaitForConversion(false);
   sensorsB.setWaitForConversion(false);
 }
@@ -111,36 +130,39 @@ void loop() {
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
 
-  // --- 1. Regelung & Logging (1 Hz) ---
+  // --- A. Regelung & Logging (1 Hz) ---
   if (now - lastUpdate >= 1000) {
     sensorsA.requestTemperatures();
     sensorsB.requestTemperatures();
 
+    // Temperaturen lesen
     float tA = sensorsA.getTempCByIndex(0);
     float tB = sensorsB.getTempCByIndex(0);
 
+    // Heizelemente aktualisieren
     updateHeater(padA, tA);
     updateHeater(padB, tB);
 
-    // BINÄRER LOG: Header + Time + TempA + TempB (als Integer * 100)
+    // --- B. Daten Senden (Binär) ---
+    // Paket: [Header(1)] [Zeit(4)] [TempA(4)] [TempB(4)]
     write_i8(RES_LOG);
     write_i32((long)now);
-    write_i32((long)(tA * 100)); // z.B. 25.50 -> 2550
+    write_i32((long)(tA * 100)); // Float -> Int (z.B. 25.50 -> 2550)
     write_i32((long)(tB * 100));
 
     lastUpdate = now;
   }
 
-  // --- 2. Befehle Empfangen (Binär) ---
+  // --- C. Befehle Empfangen (Binär & Schnell) ---
   if (Serial.available() > 0) {
     int8_t cmd = Serial.read(); // Header lesen
 
-    // Warte kurz auf Payload (4 Bytes für int32)
+    // Kurz warten falls Payload noch unterwegs ist (timeout 10ms)
     unsigned long timeout = millis();
-    while(Serial.available() < 4 && millis() - timeout < 100);
+    while(Serial.available() < 4 && millis() - timeout < 10);
 
     if (Serial.available() >= 4) {
-      long val = read_i32(); // Wert lesen (in centi-degree)
+      long val = read_i32(); // Payload lesen (Sollwert * 100)
       float target = (float)val / 100.0;
       target = constrain(target, 0, MAX_SAFE_TEMP);
 
@@ -151,4 +173,21 @@ void loop() {
       }
     }
   }
+
+  // Kontinuierliches Update der PWM (muss oft aufgerufen werden!)
+  // Da updateHeater() Zeit-basiert ist, rufen wir es hier für das Schalten auf,
+  // aber die Berechnung (PID) passiert nur oben im 1s Takt.
+  // Um ganz sicher zu gehen, dass das Schalten "weich" ist, rufen wir die Schaltlogik oft auf:
+  // (Wir nutzen hier einfache Logik: state wird oben gesetzt. Aber für SoftPWM müssen wir
+  //  permanent prüfen, ob wir im Fenster umschalten müssen.)
+
+  // Optimierung: Wir rufen die Schalt-Logik öfter auf, ohne PID neu zu berechnen.
+  // Das machen wir, indem wir die vorhandenen Duty-Werte nutzen.
+  unsigned long winTimeA = now - padA.windowStart;
+  bool stateA = winTimeA < (padA.currentDuty * WINDOW_MS);
+  if (padA.state != stateA) { digitalWrite(padA.pin, stateA); padA.state = stateA; }
+
+  unsigned long winTimeB = now - padB.windowStart;
+  bool stateB = winTimeB < (padB.currentDuty * WINDOW_MS);
+  if (padB.state != stateB) { digitalWrite(padB.pin, stateB); padB.state = stateB; }
 }
