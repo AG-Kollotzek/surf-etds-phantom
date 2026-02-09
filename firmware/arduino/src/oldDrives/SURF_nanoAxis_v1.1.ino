@@ -34,9 +34,16 @@ const int PIN_LED = 13;
 
 // --- MECHANIK & LIMITS ---
 const float STEPS_PER_MM = 800.0f; 
-const float STEPS_PER_DEG_R = 16.515f;
+const float STEPS_PER_DEG_R = 16.156f;
+// --- SPEED LIMITS (SAFETY) ---
+const float MAX_SPEED_MM_S = 40.0;    // Limit für Linearachsen
+const float MAX_SPEED_DEG_S = 180.0;  // Limit für Rotationsachse
 
-// HIER SIND DIE GRENZEN DEFINIERT (JETZT SEPARAT):
+// Vorausberechnete Limits in Steps/Sec
+const long MAX_STEPS_PER_SEC_LIN = (long)(MAX_SPEED_MM_S * STEPS_PER_MM);
+const long MAX_STEPS_PER_SEC_ROT = (long)(MAX_SPEED_DEG_S * STEPS_PER_DEG_R);
+
+// HIER SIND DIE GRENZEN der Achsen DEFINIERT (JETZT SEPARAT):
 // Horizontal
 const float LIMIT_H_MAX = 35.0;
 const float LIMIT_H_MIN = -35.0;
@@ -49,10 +56,12 @@ const float LIMIT_V_MIN = -35.0;   // Beispiel: Darf nicht tief runter
 const long LIMIT_STEPS_V_MAX = (long)(LIMIT_V_MAX * STEPS_PER_MM); 
 const long LIMIT_STEPS_V_MIN = (long)(LIMIT_V_MIN * STEPS_PER_MM); 
 
-const float HOME_OFFSET_MM_H = 41.0; 
-const float HOME_OFFSET_MM_V = 61.5; 
-const int HOMING_SIGN_H = +1;
-const int HOMING_SIGN_V = +1;
+//Rotation
+const float LIMIT_R_MAX = 20.0;   // Maximaler Winkel +20 Grad
+const float LIMIT_R_MIN = -20.0;  // Minimaler Winkel -20 Grad
+const long LIMIT_STEPS_R_MAX = (long)(LIMIT_R_MAX * STEPS_PER_DEG_R); // Umrechnung in Steps (basierend auf deinen 16.156 STEPS_PER_DEG_R)
+const long LIMIT_STEPS_R_MIN = (long)(LIMIT_R_MIN * STEPS_PER_DEG_R);
+
 
 // --- HOMING PARAMETER (Waren im Schnipsel gefehlt) ---
 const float HOMING_V_MM_S_FAST = 10.0;
@@ -61,6 +70,10 @@ const float BACKOFF_MM = 3.0;
 const int BACKOFF_REPEATS = 2;       // 2x tasten für Präzision
 const unsigned long HOMING_TIMEOUT_MS = 20000;
 const unsigned long SW_DEBOUNCE_MS = 30;
+const float HOME_OFFSET_MM_H = 41.0; 
+const float HOME_OFFSET_MM_V = 61.5; 
+const int HOMING_SIGN_H = +1;
+const int HOMING_SIGN_V = +1;
 
 // --- SPEED SETUP ---
 const float DEFAULT_ACC_MM_S2 = 80.0;
@@ -270,6 +283,17 @@ void loop() {
         int32_t target_raw = read_i32(); 
         int32_t speed_raw = read_i32();  
 
+        // --- SAFETY: SPEED LIMITING ---
+        // Hier begrenzen wir die Geschwindigkeit "hart", egal was Python sendet.
+        if (axis == AXIS_H || axis == AXIS_V) {
+            if (speed_raw > MAX_STEPS_PER_SEC_LIN) {
+                speed_raw = MAX_STEPS_PER_SEC_LIN;
+            }
+        } else if (axis == AXIS_R) {
+            if (speed_raw > MAX_STEPS_PER_SEC_ROT) {
+                speed_raw = MAX_STEPS_PER_SEC_ROT;
+            }
+        }
         // --- LIMIT CHECK (SEPARAT FÜR H UND V) ---
         bool limits_ok = true;
 
@@ -280,6 +304,10 @@ void loop() {
         else if (axis == AXIS_V) {
             if (target_raw > LIMIT_STEPS_V_MAX) limits_ok = false;
             if (target_raw < LIMIT_STEPS_V_MIN) limits_ok = false;
+        }
+        else if (axis == AXIS_R) {
+            if (target_raw > LIMIT_STEPS_R_MAX) limits_ok = false;
+            if (target_raw < LIMIT_STEPS_R_MIN) limits_ok = false;
         }
         // R-Achse hat keine Limits
 
@@ -303,10 +331,15 @@ void loop() {
         int8_t axis = read_i8();
         isHoming = true;
         
-        // HIER SIND DIE SEPARATEN OFFSETS DRIN:
-        if (axis == AXIS_H) doHomingAxis(stepper_h, PIN_END_H, HOMING_SIGN_H, HOME_OFFSET_MM_H);
-        if (axis == AXIS_V) doHomingAxis(stepper_v, PIN_END_V, HOMING_SIGN_V, HOME_OFFSET_MM_V);
-        
+        if (axis == AXIS_H) {
+            doHomingAxis(stepper_h, PIN_END_H, -1, (long)(HOME_OFFSET_MM_H * STEPS_PER_MM));
+        } else if (axis == AXIS_V) {
+            doHomingAxis(stepper_v, PIN_END_V, -1, (long)(HOME_OFFSET_MM_V * STEPS_PER_MM));
+        } else if (axis == AXIS_R) {
+            // Software-Homing: Setzt die aktuelle Laser-Position als 0
+            stepper_r.setCurrentPosition(0);
+            Serial.println("INFO: R-Axis software-homed to 0 due to laser positioning");
+        }
         isHoming = false;
         break;
       }
