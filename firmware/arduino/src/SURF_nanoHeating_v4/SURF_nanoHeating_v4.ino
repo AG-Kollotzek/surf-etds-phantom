@@ -127,6 +127,8 @@ void setup() {
 }
 
 void loop() {
+  pinMode(11, OUTPUT);
+  digitalWrite(11, HIGH);
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
 

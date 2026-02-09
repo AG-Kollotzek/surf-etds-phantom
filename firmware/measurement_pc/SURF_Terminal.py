@@ -5,33 +5,25 @@ import threading
 from collections import deque
 from datetime import datetime
 import serial
-import numpy as np
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QFrame, QTextEdit
+    QLabel, QLineEdit, QFrame, QTextEdit, QMessageBox
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-# ================= KONFIGURATION & LIMITS =================
+# ================= KONFIGURATION =================
 AXIS_PORT = "/dev/cu.usbserial-120"
 HEAT_PORT = "/dev/cu.usbserial-140"
 BAUD_RATE = 115200
 
-# Physikalische Grenzen (Anpassen an deine Mechanik!)
-LIMITS = {
-    'h': (-35, 35),  # mm
-    'v': (-35, 50),  # mm
-    'r': (-45, 45)  # Grad
-}
-
+LIMITS = {'h': (0, 150), 'v': (0, 100), 'r': (-180, 180)}
 STEPS_PER_MM = 800.0
 STEPS_PER_DEG = 16.156
 
 
-# ================= PROTOKOLL DEFINITIONEN =================
 class AxisOrder:
     LOG_DATA = 10
     MOVE_AXIS = 1
@@ -46,21 +38,16 @@ class HeatOrder:
     SET_B = 2
 
 
-# ================= SHARED STATE =================
 class SystemState:
     def __init__(self):
         self.lock = threading.Lock()
-        # Achsen
         self.pos = {'h': 0.0, 'v': 0.0, 'r': 0.0}
         self.axis_ready = True
+        self.homing_active = False  # Sperre für andere Befehle
         self.last_cmd_time = 0
-
-        # Heizung
         self.temp = {'a': 0.0, 'b': 0.0}
         self.setpoint = {'a': 25.0, 'b': 25.0}
         self.stable = {'a': False, 'b': False}
-
-        # Stability Buffers (20 Sek bei ~1Hz Log-Rate)
         self.temp_history_a = deque(maxlen=20)
         self.temp_history_b = deque(maxlen=20)
 
@@ -68,7 +55,7 @@ class SystemState:
 state = SystemState()
 
 
-# ================= BINARY HELPERS =================
+# Helper zum Senden
 def write_i8(ser, v): ser.write(int(v).to_bytes(1, 'little', signed=True))
 
 
@@ -81,7 +68,6 @@ def read_i8(ser): return int.from_bytes(ser.read(1), 'little', signed=True)
 def read_i32(ser): return int.from_bytes(ser.read(4), 'little', signed=True)
 
 
-# ================= WORKER: ACHSEN =================
 class AxisThread(threading.Thread):
     def __init__(self, port, cmd_queue, log_callback):
         super().__init__(daemon=True)
@@ -92,20 +78,21 @@ class AxisThread(threading.Thread):
             ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
             time.sleep(2)
             ser.reset_input_buffer()
-            self.log(f"Achsen-Arduino verbunden.")
+            self.log("INFO: Achsen-Arduino bereit.")
 
             while True:
-                # Watchdog: Falls CMD_DONE verloren ging, nach 10s resetten
+                # Watchdog für Deadlocks (15s für langes Homing)
                 with state.lock:
-                    if not state.axis_ready and (time.time() - state.last_cmd_time > 10.0):
+                    if not state.axis_ready and (time.time() - state.last_cmd_time > 15.0):
                         state.axis_ready = True
-                        self.log("!! Watchdog: Axis Ready Reset !!")
+                        state.homing_active = False
+                        self.log("WARNUNG: Timeout - Achse wieder freigegeben.")
 
-                # 1. Lesen
+                # 1. Empfangen
                 if ser.in_waiting >= 1:
                     hdr = read_i8(ser)
                     if hdr == AxisOrder.LOG_DATA:
-                        if ser.in_waiting >= 13:  # Time(4) + 3*Pos(4) + Stat(1)
+                        if ser.in_waiting >= 13:
                             _ = read_i32(ser)
                             rh = read_i32(ser);
                             rv = read_i32(ser);
@@ -117,7 +104,8 @@ class AxisThread(threading.Thread):
                     elif hdr == AxisOrder.COMMAND_DONE:
                         with state.lock:
                             state.axis_ready = True
-                        self.log(">> Achse: Bewegung abgeschlossen.")
+                            state.homing_active = False
+                        self.log("STATUS: Arduino meldet 'Befehl ausgeführt'.")
 
                 # 2. Senden
                 can_send = False
@@ -125,28 +113,27 @@ class AxisThread(threading.Thread):
                     can_send = state.axis_ready
 
                 if can_send and not self.cmd_queue.empty():
-                    cmd, args = self.cmd_queue.get()
+                    cmd, args, txt = self.cmd_queue.get()
                     try:
                         write_i8(ser, cmd)
                         for a in args:
-                            if cmd == AxisOrder.MOVE_AXIS and args.index(a) == 0:
-                                write_i8(ser, a)
+                            if cmd in [AxisOrder.MOVE_AXIS, AxisOrder.HOME_AXIS] and args.index(a) == 0:
+                                write_i8(ser, a)  # Axis ID
                             else:
-                                write_i32(ser, a)
+                                write_i32(ser, a)  # Payload
 
-                        if cmd in [AxisOrder.MOVE_AXIS, AxisOrder.HOME_AXIS]:
-                            with state.lock:
-                                state.axis_ready = False
-                                state.last_cmd_time = time.time()
+                        with state.lock:
+                            state.axis_ready = False
+                            state.last_cmd_time = time.time()
+                        self.log(f"CMD -> {txt}")
                     except Exception as e:
-                        self.log(f"Axis Error: {e}")
+                        self.log(f"FEHLER beim Senden: {e}")
 
                 time.sleep(0.01)
         except Exception as e:
-            self.log(f"AXIS CRITICAL: {e}")
+            self.log(f"KRITISCH: AxisThread Error: {e}")
 
 
-# ================= WORKER: HEIZUNG =================
 class HeatThread(threading.Thread):
     def __init__(self, port, cmd_queue, log_callback):
         super().__init__(daemon=True)
@@ -155,9 +142,9 @@ class HeatThread(threading.Thread):
     def run(self):
         try:
             ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
-            time.sleep(2)
+            time.sleep(2);
             ser.reset_input_buffer()
-            self.log("Heizung verbunden.")
+            self.log("INFO: Heizungs-Arduino bereit.")
 
             while True:
                 if ser.in_waiting >= 1:
@@ -171,33 +158,29 @@ class HeatThread(threading.Thread):
                                 state.temp['a'], state.temp['b'] = ra / 100.0, rb / 100.0
                                 state.temp_history_a.append(state.temp['a'])
                                 state.temp_history_b.append(state.temp['b'])
-
-                                # Stability Check: 20 Samples, Abweichung < 0.2
                                 for p in ['a', 'b']:
                                     hist = state.temp_history_a if p == 'a' else state.temp_history_b
                                     if len(hist) == 20:
-                                        diff = [abs(x - state.setpoint[p]) for x in hist]
-                                        state.stable[p] = max(diff) <= 0.2
+                                        state.stable[p] = max([abs(x - state.setpoint[p]) for x in hist]) <= 0.2
                                     else:
                                         state.stable[p] = False
 
                 while not self.cmd_queue.empty():
-                    p_idx, val = self.cmd_queue.get()
+                    p_idx, val, txt = self.cmd_queue.get()
                     write_i8(ser, p_idx);
                     write_i32(ser, int(val * 100))
                     with state.lock: state.setpoint['a' if p_idx == 1 else 'b'] = val
-
+                    self.log(f"CMD -> {txt}")
                 time.sleep(0.05)
         except Exception as e:
-            self.log(f"HEAT CRITICAL: {e}")
+            self.log(f"KRITISCH: HeatThread Error: {e}")
 
 
-# ================= GUI =================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ETD QA Terminal V2 - ESTRO/SGRT")
-        self.resize(1100, 700)
+        self.setWindowTitle("Projekt Assistent ETD QA - Unified Terminal V3")
+        self.resize(1200, 750)
         self.axis_q = queue.Queue();
         self.heat_q = queue.Queue()
         self.t_data, self.ta_data, self.tb_data = [], [], []
@@ -215,82 +198,99 @@ class MainWindow(QMainWindow):
         cw = QWidget();
         self.setCentralWidget(cw);
         layout = QHBoxLayout(cw)
-
-        # Left Panel (Controls)
         left = QVBoxLayout()
-        self.status_lbl = QLabel("Initialisiere...");
-        self.status_lbl.setStyleSheet("font-size: 13px; font-weight: bold;")
-        self.status_lbl.setFrameStyle(QFrame.StyledPanel)
+        self.status_lbl = QLabel("Warte auf Verbindung...");
+        self.status_lbl.setStyleSheet("font-size: 14px; font-weight: bold; background: #EEE; padding: 10px;")
         left.addWidget(self.status_lbl)
 
         self.console = QTextEdit();
         self.console.setReadOnly(True)
-        self.console.setStyleSheet("background: #111; color: #0f0; font-family: 'Courier New';")
+        self.console.setStyleSheet("background: #000; color: #0f0; font-family: 'Consolas'; font-size: 11px;")
         left.addWidget(self.console)
 
         self.cmd_line = QLineEdit();
-        self.cmd_line.setPlaceholderText("Befehl hier (z.B. m h 50 10)")
+        self.cmd_line.setPlaceholderText("Befehl eingeben (z.B. 'h all' oder 'm h 50 10')...")
+        self.cmd_line.setStyleSheet("height: 30px; font-size: 14px;")
         self.cmd_line.returnPressed.connect(self.parse_input)
         left.addWidget(self.cmd_line)
 
         layout.addLayout(left, 1)
-
-        # Right Panel (Plot)
-        self.fig = Figure(facecolor='#222');
+        self.fig = Figure(facecolor='#111');
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111);
-        self.ax.set_facecolor('#111')
-        self.ax.tick_params(colors='white');
+        self.ax.set_facecolor('#000')
+        self.ax.tick_params(colors='gray');
         self.ax.grid(alpha=0.2)
         layout.addWidget(self.canvas, 2)
 
     def log(self, msg):
-        ts = datetime.now().strftime("%H:%M:%S")
-        self.console.append(f"[{ts}] {msg}")
+        self.console.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
     def parse_input(self):
-        text = self.cmd_line.text().strip().lower();
+        text = self.cmd_line.text().strip().lower()
         self.cmd_line.clear()
         p = text.split()
         if not p: return
 
+        # Homing-Sperre prüfen
+        with state.lock:
+            if state.homing_active:
+                self.log("INFO: Bitte warten, Homing läuft noch.")
+                return
+
         try:
-            # MOVEMENT: m [h/v/r] [pos] [speed]
-            if p[0] == 'm' and len(p) == 4:
+            # === HOMING ===
+            if p[0] == 'h':
+                target = p[1] if len(p) > 1 else 'all'
+
+                # Sicherheitsabfrage R-Achse
+                if target in ['r', 'all']:
+                    msg = "Homing R: Sind alle Kabel frei und ist eine Rotation sicher?"
+                    reply = QMessageBox.question(self, 'Sicherheitscheck', msg, QMessageBox.Yes | QMessageBox.No)
+                    if reply == QMessageBox.No:
+                        self.log("INFO: Homing abgebrochen.")
+                        return
+
+                if target == 'all':
+                    self.log("PROZESS: Starte sequentielles Homing (H -> V -> R)...")
+                    with state.lock:
+                        state.homing_active = True
+                    self.axis_q.put((AxisOrder.HOME_AXIS, [0], "Homing H: Suche Endschalter..."))
+                    self.axis_q.put((AxisOrder.HOME_AXIS, [1], "Homing V: Suche Endschalter..."))
+                    self.axis_q.put((AxisOrder.HOME_AXIS, [2], "Homing R: Nullpunkt setzen."))
+                else:
+                    ax_id = {'h': 0, 'v': 1, 'r': 2}.get(target)
+                    if ax_id is not None:
+                        with state.lock: state.homing_active = True
+                        self.log(f"BEFEHL: Homing für Achse {target.upper()} gestartet.")
+                        self.axis_q.put((AxisOrder.HOME_AXIS, [ax_id], f"Homing {target.upper()} läuft..."))
+
+            # === MOVE ===
+            elif p[0] == 'm' and len(p) == 4:
                 ax_char = p[1]
-                if ax_char not in LIMITS: raise ValueError(f"Achse '{ax_char}' unbekannt.")
-
-                target = float(p[2]);
+                target = float(p[2])
                 speed = float(p[3])
-                min_v, max_v = LIMITS[ax_char]
 
-                if not (min_v <= target <= max_v):
-                    self.log(f"!! LIMIT ERROR: {ax_char} Bereich ist {min_v} bis {max_v}")
+                # Validierung
+                min_val, max_val = LIMITS.get(ax_char, (0, 0))
+                if not (min_val <= target <= max_val):
+                    self.log(f"FEHLER: {ax_char.upper()} Ziel {target} außerhalb Bereich ({min_val}-{max_val})")
                     return
 
                 ax_id = {'h': 0, 'v': 1, 'r': 2}[ax_char]
                 factor = STEPS_PER_DEG if ax_id == 2 else STEPS_PER_MM
-                self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)]))
-                self.log(f"Sende Move: {ax_char} auf {target}")
 
-            # HOMING: h [h/v/r]
-            elif p[0] == 'h' and len(p) == 2:
-                ax_id = {'h': 0, 'v': 1, 'r': 2}.get(p[1])
-                if ax_id is not None: self.axis_q.put((AxisOrder.HOME_AXIS, [ax_id]))
+                self.log(f"BEFEHL: {ax_char.upper()} auf {target} mit {speed} mm/s (°) erkannt.")
+                self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)],
+                                 f"Fahre {ax_char.upper()}..."))
 
-            # HEATING: t [a/b] [temp]
-            elif p[0] == 't' and len(p) == 3:
-                pad = 1 if p[1] == 'a' else 2
-                val = float(p[2])
-                if 10 <= val <= 50:
-                    self.heat_q.put((pad, val))
-                else:
-                    self.log("!! TEMP LIMIT: Bereich 10-50°C")
+            # === STOP ===
+            elif p[0] == 's':
+                self.log("!!! NOT-STOPP: Alle Motoren werden angehalten !!!")
+                self.axis_q.put((AxisOrder.STOP_ALL, [], "Stopp-Signal gesendet."))
 
-            else:
-                self.log("!! SYNTAX: m [h/v/r] [pos] [spd] | h [h/v/r] | t [a/b] [temp]")
         except Exception as e:
-            self.log(f"Fehler: {e}")
+            self.log(f"FEHLER: Syntax falsch oder Wert ungültig. (Typ: {e})")
 
     def update_ui(self):
         with state.lock:
@@ -298,37 +298,33 @@ class MainWindow(QMainWindow):
             ta, tb = state.temp['a'], state.temp['b']
             sa, sb = state.stable['a'], state.stable['b']
             rdy = state.axis_ready
+            h_active = state.homing_active
 
-        # Status Label
-        ready_col = "lime" if rdy else "orange"
-        stab_a = "DONE" if sa else "..."
-        stab_b = "DONE" if sb else "..."
+        col = "orange" if h_active else ("lime" if rdy else "yellow")
+        status = "HOMING" if h_active else ("BEREIT" if rdy else "IN BEWEGUNG")
 
         self.status_lbl.setText(
-            f"ACHSEN: H:{ph:5.1f} V:{pv:5.1f} R:{pr:5.1f} | <font color='{ready_col}'>{'BEREIT' if rdy else 'BEWEGT'}</font><br>"
-            f"TEMP A: {ta:5.2f}°C ({stab_a}) | TEMP B: {tb:5.2f}°C ({stab_b})"
+            f"SYSTEM: <font color='{col}'>{status}</font> | "
+            f"H: {ph:5.1f} | V: {pv:5.1f} | R: {pr:5.1f}<br>"
+            f"HEIZUNG: A: {ta:5.2f}°C ({'OK' if sa else '..'}) | B: {tb:5.2f}°C ({'OK' if sb else '..'})"
         )
 
-        # Plot Update (Cumulative)
         cur_t = time.time() - self.start_t
         self.t_data.append(cur_t);
         self.ta_data.append(ta);
         self.tb_data.append(tb)
-
-        if len(self.t_data) % 10 == 0:
+        if len(self.t_data) % 20 == 0:
             self.ax.clear();
             self.ax.grid(alpha=0.3)
-            self.ax.plot(self.t_data, self.ta_data, 'r-', label='Pad A', linewidth=1)
-            self.ax.plot(self.t_data, self.tb_data, 'b-', label='Pad B', linewidth=1)
-            self.ax.set_xlabel("Zeit [s]", color='white');
-            self.ax.set_ylabel("Temp [°C]", color='white')
-            self.ax.set_xlim(0, max(60, cur_t + 5))  # X-Achse startet immer bei 0
-            self.ax.set_ylim(20, 55)
+            self.ax.plot(self.t_data, self.ta_data, 'r-', label='Pad A')
+            self.ax.plot(self.t_data, self.tb_data, 'b-', label='Pad B')
+            self.ax.set_xlim(0, max(120, cur_t + 10))
+            self.ax.set_ylim(20, 55);
             self.canvas.draw()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow();
-    window.show()
+    window.show();
     sys.exit(app.exec())
