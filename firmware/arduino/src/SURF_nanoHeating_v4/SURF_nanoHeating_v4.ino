@@ -1,11 +1,16 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+// ---------- Protokoll Definitionen (Binär) ----------
+const uint8_t LOG_DATA = 10;
+const uint8_t CMD_SET_A = 1;
+const uint8_t CMD_SET_B = 2;
+
 // ---------- Hardware Pins ----------
-#define ONE_WIRE_PIN_A 2     // Sensor für Pad A an Pin 2
-#define ONE_WIRE_PIN_B 3     // Sensor für Pad B an Pin 3
-#define MOSFET_A_PIN   5     // Heizung Pad A
-#define MOSFET_B_PIN   6     // Heizung Pad B
+#define ONE_WIRE_PIN_A 2
+#define ONE_WIRE_PIN_B 3
+#define MOSFET_A_PIN   5
+#define MOSFET_B_PIN   6
 
 // ---------- Sicherheits-Limit ----------
 const float MAX_SAFE_TEMP = 50.0f;
@@ -14,9 +19,8 @@ const float MAX_SAFE_TEMP = 50.0f;
 const float KP = 0.15f;
 const float KI = 0.005f;
 const float MAX_I = 0.3f;
-const unsigned long WINDOW_MS = 1000; // Schnelleres PWM-Fenster (1 Sekunde)
+const unsigned long WINDOW_MS = 1000; // Schnelleres Fenster
 
-// Struktur zur Verwaltung der Pads
 struct Heater {
   int pin;
   float setpoint;
@@ -29,25 +33,30 @@ struct Heater {
 Heater padA = {MOSFET_A_PIN, 25.0, 0.0, 0, false, 0.0};
 Heater padB = {MOSFET_B_PIN, 25.0, 0.0, 0, false, 0.0};
 
-// Zwei separate Busse
 OneWire oneWireA(ONE_WIRE_PIN_A);
 DallasTemperature sensorsA(&oneWireA);
-
 OneWire oneWireB(ONE_WIRE_PIN_B);
 DallasTemperature sensorsB(&oneWireB);
 
-// --- FUNKTION 1: Berechnung des Duty-Cycles (PI-Regler) ---
+// --- BINÄR HELPER ---
+void write_i32(long v) {
+  Serial.write((uint8_t*)&v, 4);
+}
+
+long read_i32() {
+  long v = 0;
+  Serial.readBytes((char*)&v, 4);
+  return v;
+}
+
+// --- LOGIK ---
 void updateHeater(Heater &h, float currentTemp) {
-  // Sicherheits-Check
   if (isnan(currentTemp) || currentTemp > MAX_SAFE_TEMP || currentTemp < -50.0) {
-    h.currentDuty = 0;
-    digitalWrite(h.pin, LOW);
-    return;
+    h.currentDuty = 0; digitalWrite(h.pin, LOW); return;
   }
 
   float error = h.setpoint - currentTemp;
 
-  // Integral-Anteil nur im Nahbereich (1.0 Grad) nutzen
   if (fabs(error) < 1.0) {
     h.integral += error * KI;
     h.integral = constrain(h.integral, 0, MAX_I);
@@ -55,27 +64,15 @@ void updateHeater(Heater &h, float currentTemp) {
     h.integral = 0;
   }
 
-  // Duty Cycle berechnen
   h.currentDuty = (error * KP) + h.integral;
   h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);
-
-  // Anti-Overshoot: Sofort aus, wenn Sollwert erreicht/überschritten
   if (currentTemp >= h.setpoint) h.currentDuty = 0.0;
 }
 
-// --- FUNKTION 2: Ausführung der PWM-Steuerung (Zeitproportional) ---
 void maintainPWM(Heater &h) {
   unsigned long now = millis();
-
-  // Fenster-Timer
-  if (now - h.windowStart >= WINDOW_MS) {
-    h.windowStart = now;
-  }
-
-  // Soll-Zustand basierend auf Duty Cycle berechnen
+  if (now - h.windowStart >= WINDOW_MS) h.windowStart = now;
   bool shouldBeOn = (now - h.windowStart) < (h.currentDuty * WINDOW_MS);
-
-  // Pin schalten
   if (shouldBeOn != h.state) {
     h.state = shouldBeOn;
     digitalWrite(h.pin, h.state ? HIGH : LOW);
@@ -84,19 +81,13 @@ void maintainPWM(Heater &h) {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(padA.pin, OUTPUT);
-  pinMode(padB.pin, OUTPUT);
-  digitalWrite(padA.pin, LOW);
-  digitalWrite(padB.pin, LOW);
+  pinMode(padA.pin, OUTPUT); pinMode(padB.pin, OUTPUT);
+  digitalWrite(padA.pin, LOW); digitalWrite(padB.pin, LOW);
 
-  sensorsA.begin();
-  sensorsB.begin();
-
-  // Wichtig: Nicht auf Konvertierung warten (async)
+  sensorsA.begin(); sensorsB.begin();
   sensorsA.setWaitForConversion(false);
   sensorsB.setWaitForConversion(false);
 
-  // Erste Messung direkt anstoßen
   sensorsA.requestTemperatures();
   sensorsB.requestTemperatures();
 }
@@ -105,43 +96,39 @@ void loop() {
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
 
-  // --- Teil A: Messung und Regelung (1Hz) ---
+  // 1. Messen & Senden (1 Hz)
   if (now - lastUpdate >= 1000) {
-    // 1. LESEN (Ergebnisse der Anfrage aus dem letzten Loop/Setup)
     float tA = sensorsA.getTempCByIndex(0);
     float tB = sensorsB.getTempCByIndex(0);
 
-    // 2. REGEL-BERECHNUNG (Duty-Cycle anpassen)
     updateHeater(padA, tA);
     updateHeater(padB, tB);
 
-    // 3. NEUE MESSUNG STARTEN (für den nächsten Loop in 1s)
     sensorsA.requestTemperatures();
     sensorsB.requestTemperatures();
 
-    // Daten für Python-Logging
-    Serial.print(now / 1000);
-    Serial.print(","); Serial.print(tA, 2);
-    Serial.print(","); Serial.println(tB, 2);
+    // BINÄR SENDEN
+    Serial.write(LOG_DATA);       // Header (1 Byte)
+    write_i32(0);                 // Dummy Timestamp (Python macht eigenen) oder millis()
+    write_i32((long)(tA * 100));  // Temp A als Int (z.B. 2550 für 25.50°C)
+    write_i32((long)(tB * 100));  // Temp B als Int
 
     lastUpdate = now;
   }
 
-  // --- Teil B: PWM Aufrechterhalten (läuft bei jedem Loop-Durchlauf!) ---
+  // 2. PWM Update (Immer)
   maintainPWM(padA);
   maintainPWM(padB);
 
-  // --- Teil C: Befehle empfangen ---
-  if (Serial.available()) {
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-    if (cmd.startsWith("SPA")) {
-      float val = cmd.substring(4).toFloat();
-      padA.setpoint = constrain(val, 0, MAX_SAFE_TEMP);
-    }
-    if (cmd.startsWith("SPB")) {
-      float val = cmd.substring(4).toFloat();
-      padB.setpoint = constrain(val, 0, MAX_SAFE_TEMP);
-    }
+  // 3. Befehle Empfangen (Binär: Header + 4 Byte)
+  if (Serial.available() >= 5) {
+    uint8_t cmd = Serial.read();
+    long val = read_i32(); // Wert kommt als int * 100 an
+
+    float target = (float)val / 100.0;
+    target = constrain(target, 0, MAX_SAFE_TEMP);
+
+    if (cmd == CMD_SET_A) padA.setpoint = target;
+    if (cmd == CMD_SET_B) padB.setpoint = target;
   }
 }

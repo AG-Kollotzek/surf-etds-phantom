@@ -105,36 +105,45 @@ void moveAxis(int8_t axis, long target, long speed) {
 
 // --- HOMING FUNKTION (Robust & Blockierend wie in v1.2) ---
 void doHoming(int axisIdx) {
+  // Zeiger auf den korrekten Stepper und Pin-Auswahl
   AccelStepper* stepper;
   int switchPin;
-  long limit;
-  long backoff_dist;
+  long dir_factor; // 1 oder -1, bestimmt Suchrichtung
+  long backoff_steps;
 
-  // Mapping korrigiert auf existierende Variablen
+  // --- MAPPING auf die Variablen aus deinem v3-Sketch ---
   if (axisIdx == 0) {
-    stepper = &stepper_h; switchPin = PIN_END_H; // Geändert von axisH/LIM_H
-    limit = -100000; backoff_dist = 2000;
+    stepper = &stepper_h;       // Name in v3
+    switchPin = PIN_END_H;      // Name in v3
+    dir_factor = -1;            // Homing nach Links/Negativ
+    backoff_steps = 2000;       // Freifahren nach Rechts
   }
   else if (axisIdx == 1) {
-    stepper = &stepper_v; switchPin = PIN_END_V; // Geändert von axisV/LIM_V
-    limit = 100000; backoff_dist = -2000;
+    stepper = &stepper_v;       // Name in v3
+    switchPin = PIN_END_V;      // Name in v3
+    dir_factor = 1;             // Homing nach Oben/Positiv (Vertikalachse)
+    backoff_steps = -2000;      // Freifahren nach Unten
   }
   else {
-    // Achse R hat keinen Sensor -> Homing nicht möglich oder nur "Zeroing"
-    Serial.println("Axis R has no Endstop!");
+    // Achse R (2) hat keinen Sensor -> Nur Position nullen
+    stepper_r.setCurrentPosition(0);
     return;
   }
 
-  float fastSpeed = 400.0;
-  float slowSpeed = 50.0;
-
-  if (limit < 0) { fastSpeed = -fastSpeed; slowSpeed = -slowSpeed; }
+  // Geschwindigkeiten
+  float searchSpeed = 400.0 * dir_factor;
+  float creepSpeed = 50.0 * dir_factor;
 
   Serial.print("Homing Axis "); Serial.println(axisIdx);
 
-  // --- PHASE 1: Schnell zum Schalter ---
-  stepper->setSpeed(fastSpeed);
-  // Fahren solange Schalter LOW ist (Nicht unterbrochen)
+  // --- PHASE 1: Grob zum Schalter fahren ---
+  stepper->setSpeed(searchSpeed);
+
+  // WICHTIG: Wir fahren, solange der Schalter NICHT gedrückt ist.
+  // Bei NC Schaltern an GND ist: Frei = LOW, Gedrückt/Offen = HIGH?
+  // Oder INPUT_PULLUP gegen GND: Frei = HIGH, Gedrückt = LOW?
+  // Da du sagtest "Gedrückt = HIGH", muss er fahren solange LOW ist.
+  // Sollte er sofort stoppen, ändere "== LOW" zu "== HIGH".
   while (digitalRead(switchPin) == LOW) {
     stepper->runSpeed();
   }
@@ -142,21 +151,28 @@ void doHoming(int axisIdx) {
   stepper->setCurrentPosition(0);
   delay(100);
 
-  // --- PHASE 2: Freifahren ---
-  stepper->runToNewPosition(backoff_dist);
+  // --- PHASE 2: Freifahren (Backoff) ---
+  // runToNewPosition ist blockierend und sicher
+  stepper->runToNewPosition(backoff_steps);
   delay(100);
 
-  // --- PHASE 3: Langsam zum Schalter ---
-  stepper->setSpeed(slowSpeed);
+  // --- PHASE 3: Langsam zum Schalter (Fein-Homing) ---
+  stepper->setSpeed(creepSpeed);
   while (digitalRead(switchPin) == LOW) {
     stepper->runSpeed();
   }
 
-  // --- PHASE 4: Abschluss ---
+  // --- PHASE 4: Nullpunkt setzen ---
   stepper->setCurrentPosition(0);
   stepper->setSpeed(0);
-  stepper->setMaxSpeed(MAX_STEPS_PER_SEC_LIN); // Zurück auf Standard-Limit
-  Serial.println("Homing Done.");
+
+  // Optional: Etwas freifahren, damit der Schalter nicht dauerhaft gedrückt ist
+  // stepper->runToNewPosition(-backoff_steps / 2);
+
+  // MaxSpeed wiederherstellen (wichtig, da setSpeed das überschreibt)
+  stepper->setMaxSpeed(2000);
+
+  Serial.println("Done.");
 }
 
 void setup() {
