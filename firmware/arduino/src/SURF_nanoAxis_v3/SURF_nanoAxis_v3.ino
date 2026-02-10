@@ -42,8 +42,8 @@ const long LIMIT_STEPS_R_MAX = (long)(LIMIT_R_MAX_DEG * STEPS_PER_DEG);
 const long LIMIT_STEPS_R_MIN = (long)(LIMIT_R_MIN_DEG * STEPS_PER_DEG);
 
 // --- SPEED LIMITS (Aus v1.2) ---
-const float MAX_SPEED_MM_S = 40.0;
-const float MAX_SPEED_DEG_S = 180.0;
+const float MAX_SPEED_MM_S = 100.0;
+const float MAX_SPEED_DEG_S = 90.0;
 const long MAX_STEPS_PER_SEC_LIN = (long)(MAX_SPEED_MM_S * STEPS_PER_MM);
 const long MAX_STEPS_PER_SEC_ROT = (long)(MAX_SPEED_DEG_S * STEPS_PER_DEG);
 
@@ -104,76 +104,59 @@ void moveAxis(int8_t axis, long target, long speed) {
 }
 
 // --- HOMING FUNKTION (Robust & Blockierend wie in v1.2) ---
-void doHoming(int8_t axis) {
-  AccelStepper* st;
-  int pin_end;
-  int sign;
-  float offset;
+void doHoming(int axisIdx) {
+  AccelStepper* stepper;
+  int switchPin;
+  long limit;
+  long backoff_dist;
 
-  if (axis == AXIS_H) {
-    st = &stepper_h; pin_end = PIN_END_H; sign = HOMING_SIGN_H; offset = HOME_OFFSET_MM_H;
-  } else if (axis == AXIS_V) {
-    st = &stepper_v; pin_end = PIN_END_V; sign = HOMING_SIGN_V; offset = HOME_OFFSET_MM_V;
-  } else if (axis == AXIS_R) {
-    stepper_r.setCurrentPosition(0); return;
-  } else return;
-
-  // --- PHASE 1: Schnelle Suche ---
-  long fast_spd = HOMING_SPEED_FAST * STEPS_PER_MM;
-  st->setMaxSpeed(fast_spd);
-  st->setSpeed(sign * fast_spd);
-
-  // Wir fahren so lange, bis der Schalter wirklich stabil auf HIGH geht (v1.2 Logik)
-  bool confirmed = false;
-  while (!confirmed) {
-    st->runSpeed();
-
-    // Prüfe Schalter: Muss HIGH sein (Gedrückt)
-    if (digitalRead(pin_end) == HIGH) {
-      // Kurzer Check, ob es kein Rauschen ist:
-      delay(10); // 10ms warten
-      if (digitalRead(pin_end) == HIGH) confirmed = true; // Stabil ausgelöst!
-    }
-
-    // Not-Stopp Check während der Fahrt
-    if (Serial.available() > 0 && Serial.peek() == STOP_ALL) {
-      Serial.read();
-      st->stop();
-      return;
-    }
+  // Mapping korrigiert auf existierende Variablen
+  if (axisIdx == 0) {
+    stepper = &stepper_h; switchPin = PIN_END_H; // Geändert von axisH/LIM_H
+    limit = -100000; backoff_dist = 2000;
+  }
+  else if (axisIdx == 1) {
+    stepper = &stepper_v; switchPin = PIN_END_V; // Geändert von axisV/LIM_V
+    limit = 100000; backoff_dist = -2000;
+  }
+  else {
+    // Achse R hat keinen Sensor -> Homing nicht möglich oder nur "Zeroing"
+    Serial.println("Axis R has no Endstop!");
+    return;
   }
 
-  st->stop();
-  st->setCurrentPosition(0);
-  delay(200);
+  float fastSpeed = 400.0;
+  float slowSpeed = 50.0;
 
-  // --- PHASE 2: Freifahren (Backoff) ---
-  // Wir fahren ein Stück weg, damit der Schalter wieder frei wird
-  st->setMaxSpeed(HOMING_SPEED_SLOW * STEPS_PER_MM);
-  st->moveTo(-sign * BACKOFF_MM * STEPS_PER_MM);
-  while (st->distanceToGo() != 0) st->run();
-  delay(200);
+  if (limit < 0) { fastSpeed = -fastSpeed; slowSpeed = -slowSpeed; }
 
-  // --- PHASE 3: Langsame Präzisions-Suche ---
-  st->setSpeed(sign * (HOMING_SPEED_SLOW * STEPS_PER_MM));
-  while (digitalRead(pin_end) == LOW) {
-    st->runSpeed();
+  Serial.print("Homing Axis "); Serial.println(axisIdx);
+
+  // --- PHASE 1: Schnell zum Schalter ---
+  stepper->setSpeed(fastSpeed);
+  // Fahren solange Schalter LOW ist (Nicht unterbrochen)
+  while (digitalRead(switchPin) == LOW) {
+    stepper->runSpeed();
   }
-  st->stop();
-  st->setCurrentPosition(0);
-  delay(200);
 
-  // --- PHASE 4: Offset auf Arbeits-Nullpunkt ---
-  // Wir setzen die Position auf den im Guideline definierten Offset
-  st->setCurrentPosition((long)(offset * STEPS_PER_MM));
+  stepper->setCurrentPosition(0);
+  delay(100);
 
-  // Fahre jetzt zur logischen Null (Referenzpunkt der QA-Plattform)
-  st->setMaxSpeed(fast_spd);
-  st->moveTo(0);
-  while(st->distanceToGo() != 0) st->run();
+  // --- PHASE 2: Freifahren ---
+  stepper->runToNewPosition(backoff_dist);
+  delay(100);
 
-  // Finaler Log für die GUI
-  // write_i8(COMMAND_DONE); // Wird im switch-case nach dem Funktionsaufruf erledigt
+  // --- PHASE 3: Langsam zum Schalter ---
+  stepper->setSpeed(slowSpeed);
+  while (digitalRead(switchPin) == LOW) {
+    stepper->runSpeed();
+  }
+
+  // --- PHASE 4: Abschluss ---
+  stepper->setCurrentPosition(0);
+  stepper->setSpeed(0);
+  stepper->setMaxSpeed(MAX_STEPS_PER_SEC_LIN); // Zurück auf Standard-Limit
+  Serial.println("Homing Done.");
 }
 
 void setup() {
@@ -250,4 +233,4 @@ void loop() {
       write_i8(COMMAND_DONE);
     }
   }
-}do
+}
