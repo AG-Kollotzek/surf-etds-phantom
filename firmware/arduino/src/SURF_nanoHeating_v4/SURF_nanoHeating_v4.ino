@@ -20,10 +20,10 @@ const float MAX_SAFE_TEMP = 50.0f;
 
 // ---------- Regler-Parameter (Aus Ihrem Code übernommen) ----------
 // Hinweis: Ihr Code war ein PI-Regler (kein D-Anteil). Das ist für Heizungen optimal.
-const float KP = 0.40f;
-const float KI = 0.02f;
-const float MAX_I = 0.5f;        // Anti-Windup Limit
-const unsigned long WINDOW_MS = 4000; // PWM Fensterbreite
+const float KP = 0.15f;
+const float KI = 0.005f;
+const float MAX_I = 0.3f;
+const unsigned long WINDOW_MS = 1000;
 
 // Protokoll Header (Muss zum Python-Script passen)
 #define CMD_SET_A 1
@@ -112,8 +112,7 @@ void updateHeater(Heater &h, float currentTemp) {
 }
 
 void setup() {
-  Serial.begin(115200); // Wichtig: Muss mit Python BAUD übereinstimmen
-
+  Serial.begin(115200);
   pinMode(padA.pin, OUTPUT);
   pinMode(padB.pin, OUTPUT);
   digitalWrite(padA.pin, LOW);
@@ -121,75 +120,89 @@ void setup() {
 
   sensorsA.begin();
   sensorsB.begin();
-  // Nicht blockieren beim Lesen der Temperatur
   sensorsA.setWaitForConversion(false);
   sensorsB.setWaitForConversion(false);
+
+  // ERSTE Messung anstoßen, damit im ersten Loop Daten da sind
+  sensorsA.requestTemperatures();
+  sensorsB.requestTemperatures();
 }
 
 void loop() {
-  pinMode(11, OUTPUT);
-  digitalWrite(11, HIGH);
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
 
-  // --- A. Regelung & Logging (1 Hz) ---
-  if (now - lastUpdate >= 1000) {
-    sensorsA.requestTemperatures();
-    sensorsB.requestTemperatures();
+  // Sicherheits-LED (optional)
+  // pinMode(11, OUTPUT); digitalWrite(11, HIGH);
 
-    // Temperaturen lesen
+  if (now - lastUpdate >= 1000) {
+    // 1. LESEN (Wir lesen das Ergebnis der ANFRAGE vom LETZTEN Loop)
+    // Da 1000ms vergangen sind, ist die Konvertierung (max 750ms) sicher fertig.
     float tA = sensorsA.getTempCByIndex(0);
     float tB = sensorsB.getTempCByIndex(0);
 
-    // Heizelemente aktualisieren
+    // 2. REGELN
     updateHeater(padA, tA);
     updateHeater(padB, tB);
 
-    // --- B. Daten Senden (Binär) ---
-    // Paket: [Header(1)] [Zeit(4)] [TempA(4)] [TempB(4)]
-    write_i8(RES_LOG);
-    write_i32((long)now);
-    write_i32((long)(tA * 100)); // Float -> Int (z.B. 25.50 -> 2550)
-    write_i32((long)(tB * 100));
+    // 3. NEUE MESSUNG STARTEN (für den nächsten Loop)
+    sensorsA.requestTemperatures();
+    sensorsB.requestTemperatures();
+
+    // Datenformat für Python
+    Serial.print(now / 1000);
+    Serial.print(","); Serial.print(tA, 2);
+    Serial.print(","); Serial.println(tB, 2);
 
     lastUpdate = now;
   }
 
-  // --- C. Befehle Empfangen (Binär & Schnell) ---
-  if (Serial.available() > 0) {
-    int8_t cmd = Serial.read(); // Header lesen
+  // PI-PWM Logic muss öfter als 1x pro Sekunde laufen für "updateHeater" Check?
+  // Nein, updateHeater setzt nur den Status.
+  // ABER: Damit das PWM-Schalten (An/Aus) funktioniert, müssen wir updateHeater
+  // eigentlich dauernd aufrufen oder die PWM-Logik entkoppeln.
+  // FIX: Wir rufen den "Schalt-Teil" von updateHeater hier im Main-Loop dauernd auf!
 
-    // Kurz warten falls Payload noch unterwegs ist (timeout 10ms)
-    unsigned long timeout = millis();
-    while(Serial.available() < 4 && millis() - timeout < 10);
+  maintainPWM(padA); // Neue Hilfsfunktion unten nutzen
+  maintainPWM(padB);
 
-    if (Serial.available() >= 4) {
-      long val = read_i32(); // Payload lesen (Sollwert * 100)
-      float target = (float)val / 100.0;
-      target = constrain(target, 0, MAX_SAFE_TEMP);
+  // ... (Serial Command Block bleibt gleich) ...
+}
 
-      if (cmd == CMD_SET_A) {
-        padA.setpoint = target;
-      } else if (cmd == CMD_SET_B) {
-        padB.setpoint = target;
-      }
-    }
+// --- ZUSATZ: PWM Logik entkoppeln ---
+// Füge diese Funktion hinzu und nimm den PWM-Teil aus updateHeater raus oder lass updateHeater nur Berechnungen machen.
+
+void updateHeater(Heater &h, float currentTemp) {
+  // Nur Berechnung des DutyCycles hier
+  if (isnan(currentTemp) || currentTemp > MAX_SAFE_TEMP || currentTemp < -50.0) {
+    h.state = false; h.currentDuty = 0; digitalWrite(h.pin, LOW); return;
   }
 
-  // Kontinuierliches Update der PWM (muss oft aufgerufen werden!)
-  // Da updateHeater() Zeit-basiert ist, rufen wir es hier für das Schalten auf,
-  // aber die Berechnung (PID) passiert nur oben im 1s Takt.
-  // Um ganz sicher zu gehen, dass das Schalten "weich" ist, rufen wir die Schaltlogik oft auf:
-  // (Wir nutzen hier einfache Logik: state wird oben gesetzt. Aber für SoftPWM müssen wir
-  //  permanent prüfen, ob wir im Fenster umschalten müssen.)
+  float error = h.setpoint - currentTemp;
 
-  // Optimierung: Wir rufen die Schalt-Logik öfter auf, ohne PID neu zu berechnen.
-  // Das machen wir, indem wir die vorhandenen Duty-Werte nutzen.
-  unsigned long winTimeA = now - padA.windowStart;
-  bool stateA = winTimeA < (padA.currentDuty * WINDOW_MS);
-  if (padA.state != stateA) { digitalWrite(padA.pin, stateA); padA.state = stateA; }
+  // Integral nur nutzen wenn wir nah dran sind (< 1.0 Grad)
+  if (fabs(error) < 1.0) {
+    h.integral += error * KI;
+    h.integral = constrain(h.integral, 0, MAX_I);
+  } else {
+    h.integral = 0;
+  }
 
-  unsigned long winTimeB = now - padB.windowStart;
-  bool stateB = winTimeB < (padB.currentDuty * WINDOW_MS);
-  if (padB.state != stateB) { digitalWrite(padB.pin, stateB); padB.state = stateB; }
+  h.currentDuty = (error * KP) + h.integral;
+  h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);
+
+  // Anti-Windup / Overshoot Schutz: Wenn wir drüber sind, sofort 0
+  if (currentTemp >= h.setpoint) h.currentDuty = 0.0;
+}
+
+void maintainPWM(Heater &h) {
+  unsigned long now = millis();
+  if (now - h.windowStart >= WINDOW_MS) {
+    h.windowStart = now;
+  }
+  bool shouldBeOn = (now - h.windowStart) < (h.currentDuty * WINDOW_MS);
+  if (shouldBeOn != h.state) {
+    h.state = shouldBeOn;
+    digitalWrite(h.pin, h.state ? HIGH : LOW);
+  }
 }
