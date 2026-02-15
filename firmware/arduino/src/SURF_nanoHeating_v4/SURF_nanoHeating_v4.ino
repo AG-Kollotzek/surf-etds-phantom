@@ -1,10 +1,19 @@
+/*
+ * SURF_nanoHeating_Binary_Final
+ * - PI-Regler (Kp=0.15, Ki=0.005)
+ * - Anti-Windup & Soft-PWM
+ * - Robustes binäres Protokoll (Handshake-kompatibel)
+ */
+
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// ---------- Protokoll Definitionen (Binär) ----------
-const uint8_t LOG_DATA = 10;
-const uint8_t CMD_SET_A = 1;
-const uint8_t CMD_SET_B = 2;
+// ---------- NEU: Protokoll-Enum für Konsistenz mit Axis-Treiber ----------
+enum HeatOrder : uint8_t {
+  CMD_SET_A = 1,
+  CMD_SET_B = 2,
+  LOG_DATA  = 10   // Entspricht deinem RES_LOG
+};
 
 // ---------- Hardware Pins ----------
 #define ONE_WIRE_PIN_A 2
@@ -12,14 +21,11 @@ const uint8_t CMD_SET_B = 2;
 #define MOSFET_A_PIN   5
 #define MOSFET_B_PIN   6
 
-// ---------- Sicherheits-Limit ----------
 const float MAX_SAFE_TEMP = 50.0f;
-
-// ---------- Regler-Parameter (Optimiert gegen Overshoot) ----------
+const unsigned long WINDOW_MS = 1000;
 const float KP = 0.15f;
 const float KI = 0.005f;
 const float MAX_I = 0.3f;
-const unsigned long WINDOW_MS = 1000; // Schnelleres Fenster
 
 struct Heater {
   int pin;
@@ -30,34 +36,35 @@ struct Heater {
   float currentDuty;
 };
 
-Heater padA = {MOSFET_A_PIN, 25.0, 0.0, 0, false, 0.0};
-Heater padB = {MOSFET_B_PIN, 25.0, 0.0, 0, false, 0.0};
+// --- IDEALSTAND: Start mit 0.0°C für maximale Sicherheit ---
+Heater padA = {MOSFET_A_PIN, 0.0, 0.0, 0, false, 0.0};
+Heater padB = {MOSFET_B_PIN, 0.0, 0.0, 0, false, 0.0};
 
+// Sensoren initialisieren
 OneWire oneWireA(ONE_WIRE_PIN_A);
 DallasTemperature sensorsA(&oneWireA);
 OneWire oneWireB(ONE_WIRE_PIN_B);
 DallasTemperature sensorsB(&oneWireB);
 
-// --- BINÄR HELPER ---
-void write_i32(long v) {
-  Serial.write((uint8_t*)&v, 4);
-}
-
+// --- Binär-Helfer ---
 long read_i32() {
-  long v = 0;
-  Serial.readBytes((char*)&v, 4);
-  return v;
+  long val = 0;
+  Serial.readBytes((char*)&val, 4);
+  return val;
 }
 
-// --- LOGIK ---
+void write_i32(long val) { Serial.write((byte*)&val, 4); }
+void write_i8(int8_t val) { Serial.write(val); }
+
 void updateHeater(Heater &h, float currentTemp) {
   if (isnan(currentTemp) || currentTemp > MAX_SAFE_TEMP || currentTemp < -50.0) {
-    h.currentDuty = 0; digitalWrite(h.pin, LOW); return;
+    digitalWrite(h.pin, LOW);
+    h.state = false; h.integral = 0; h.currentDuty = 0;
+    return;
   }
 
   float error = h.setpoint - currentTemp;
-
-  if (fabs(error) < 1.0) {
+  if (fabs(error) < 2.0) {
     h.integral += error * KI;
     h.integral = constrain(h.integral, 0, MAX_I);
   } else {
@@ -69,66 +76,59 @@ void updateHeater(Heater &h, float currentTemp) {
   if (currentTemp >= h.setpoint) h.currentDuty = 0.0;
 }
 
-void maintainPWM(Heater &h) {
-  unsigned long now = millis();
-  if (now - h.windowStart >= WINDOW_MS) h.windowStart = now;
-  bool shouldBeOn = (now - h.windowStart) < (h.currentDuty * WINDOW_MS);
-  if (shouldBeOn != h.state) {
-    h.state = shouldBeOn;
-    digitalWrite(h.pin, h.state ? HIGH : LOW);
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   pinMode(padA.pin, OUTPUT); pinMode(padB.pin, OUTPUT);
   digitalWrite(padA.pin, LOW); digitalWrite(padB.pin, LOW);
-
   sensorsA.begin(); sensorsB.begin();
   sensorsA.setWaitForConversion(false);
   sensorsB.setWaitForConversion(false);
-
-  sensorsA.requestTemperatures();
-  sensorsB.requestTemperatures();
 }
 
 void loop() {
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
 
-  // 1. Messen & Senden (1 Hz)
+  // --- A. Regelung & Logging (1 Hz) ---
   if (now - lastUpdate >= 1000) {
     float tA = sensorsA.getTempCByIndex(0);
     float tB = sensorsB.getTempCByIndex(0);
-
     updateHeater(padA, tA);
     updateHeater(padB, tB);
 
     sensorsA.requestTemperatures();
     sensorsB.requestTemperatures();
 
-    // BINÄR SENDEN
-    Serial.write(LOG_DATA);       // Header (1 Byte)
-    write_i32(0);                 // Dummy Timestamp (Python macht eigenen) oder millis()
-    write_i32((long)(tA * 100));  // Temp A als Int (z.B. 2550 für 25.50°C)
-    write_i32((long)(tB * 100));  // Temp B als Int
-
+    write_i8(LOG_DATA);
+    write_i32((long)now);
+    write_i32((long)(tA * 100));
+    write_i32((long)(tB * 100));
     lastUpdate = now;
   }
 
-  // 2. PWM Update (Immer)
-  maintainPWM(padA);
-  maintainPWM(padB);
-
-  // 3. Befehle Empfangen (Binär: Header + 4 Byte)
+  // --- B. Befehle Empfangen mit Robustheits-Schutz ---
   if (Serial.available() >= 5) {
     uint8_t cmd = Serial.read();
-    long val = read_i32(); // Wert kommt als int * 100 an
 
+    if (cmd != CMD_SET_A && cmd != CMD_SET_B) {
+        while(Serial.available()) Serial.read(); // Puffer leeren bei Sync-Verlust
+        return;
+    }
+
+    long val = read_i32();
     float target = (float)val / 100.0;
     target = constrain(target, 0, MAX_SAFE_TEMP);
 
     if (cmd == CMD_SET_A) padA.setpoint = target;
-    if (cmd == CMD_SET_B) padB.setpoint = target;
+    else if (cmd == CMD_SET_B) padB.setpoint = target;
   }
+
+  // --- C. Kontinuierliches Soft-PWM Update ---
+  if (now - padA.windowStart >= WINDOW_MS) padA.windowStart = now;
+  bool stateA = (now - padA.windowStart) < (padA.currentDuty * WINDOW_MS);
+  if (padA.state != stateA) { digitalWrite(padA.pin, stateA); padA.state = stateA; }
+
+  if (now - padB.windowStart >= WINDOW_MS) padB.windowStart = now;
+  bool stateB = (now - padB.windowStart) < (padB.currentDuty * WINDOW_MS);
+  if (padB.state != stateB) { digitalWrite(padB.pin, stateB); padB.state = stateB; }
 }
