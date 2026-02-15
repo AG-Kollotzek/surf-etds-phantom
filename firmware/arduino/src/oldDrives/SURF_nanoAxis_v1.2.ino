@@ -13,7 +13,7 @@ enum OrderID : uint8_t {
   MOVE_AXIS = 1,
   HOME_AXIS = 2,
   STOP_ALL = 3,
-  COMMAND_DONE = 4, // Neu: Rückmeldung für PC
+  COMMAND_DONE = 4, // Neu
   LOG_DATA = 10
 };
 
@@ -37,7 +37,7 @@ const int PIN_LED = 13;
 const float STEPS_PER_MM = 800.0f; 
 const float STEPS_PER_DEG_R = 16.156f;
 // --- SPEED LIMITS (SAFETY) ---
-const float MAX_SPEED_MM_S = 40.0;    // Limit für Linearachsen
+const float MAX_SPEED_MM_S = 50.0;    // Limit für Linearachsen
 const float MAX_SPEED_DEG_S = 180.0;  // Limit für Rotationsachse
 
 // Vorausberechnete Limits in Steps/Sec
@@ -58,13 +58,13 @@ const long LIMIT_STEPS_V_MAX = (long)(LIMIT_V_MAX * STEPS_PER_MM);
 const long LIMIT_STEPS_V_MIN = (long)(LIMIT_V_MIN * STEPS_PER_MM); 
 
 //Rotation
-const float LIMIT_R_MAX = 45.0;   // Maximaler Winkel +20 Grad
-const float LIMIT_R_MIN = -45.0;  // Minimaler Winkel -20 Grad
+const float LIMIT_R_MAX = 45.0;   // Maximaler Winkel
+const float LIMIT_R_MIN = -45.0;  // Minimaler Winkel
 const long LIMIT_STEPS_R_MAX = (long)(LIMIT_R_MAX * STEPS_PER_DEG_R); // Umrechnung in Steps (basierend auf deinen 16.156 STEPS_PER_DEG_R)
 const long LIMIT_STEPS_R_MIN = (long)(LIMIT_R_MIN * STEPS_PER_DEG_R);
 
 
-// --- HOMING PARAMETER (Waren im Schnipsel gefehlt) ---
+// --- HOMING PARAMETER ---
 const float HOMING_V_MM_S_FAST = 10.0;
 const float HOMING_V_MM_S_SLOW = 2.0;
 const float BACKOFF_MM = 3.0;
@@ -91,6 +91,7 @@ const unsigned long LOG_INTERVAL_MS = 50;
 bool isHoming = false; 
 bool isAlarmState = false;
 bool rAxisInitialized = false;
+bool wasMoving = false;
 
 // --- SERIAL HELPERS ---
 void write_i8(int8_t v) { Serial.write((uint8_t)v); }
@@ -254,7 +255,19 @@ void loop() {
 
   if (!isHoming) { stepper_h.run(); stepper_v.run(); stepper_r.run(); }
 
-  if (millis() - lastLogTime >= LOG_INTERVAL_MS) { sendStatusLog(); lastLogTime = millis(); }
+  if (millis() - lastLogTime >= LOG_INTERVAL_MS) { sendStatusLog(); lastLogTime = millis();
+
+  // --- COMMAND DONE DETEKTION ---
+  bool isMoving = (stepper_h.distanceToGo() != 0 ||
+                   stepper_v.distanceToGo() != 0 ||
+                   stepper_r.distanceToGo() != 0);
+
+  // Wenn er vorher fuhr und jetzt steht -> Signal senden
+  if (wasMoving && !isMoving) {
+      write_i8(COMMAND_DONE);
+  }
+  wasMoving = isMoving;
+  }
 
   // 2. BEFEHLE
   if (Serial.available() > 0) {

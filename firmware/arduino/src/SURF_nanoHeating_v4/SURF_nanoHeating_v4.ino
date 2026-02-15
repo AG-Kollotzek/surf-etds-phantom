@@ -25,10 +25,12 @@ const float KI = 0.02f;
 const float MAX_I = 0.5f;        // Anti-Windup Limit
 const unsigned long WINDOW_MS = 4000; // PWM Fensterbreite
 
-// Protokoll Header (Muss zum Python-Script passen)
-#define CMD_SET_A 1
-#define CMD_SET_B 2
-#define RES_LOG   10
+// ---------- Protokoll Definitionen (Binär) ----------
+enum HeatOrder : uint8_t {
+  CMD_SET_A = 1,
+  CMD_SET_B = 2,
+  LOG_DATA = 10
+};
 
 struct Heater {
   int pin;
@@ -40,8 +42,8 @@ struct Heater {
 };
 
 // Initialisierung mit 25.0°C Startwert
-Heater padA = {MOSFET_A_PIN, 25.0, 0.0, 0, false, 0.0};
-Heater padB = {MOSFET_B_PIN, 25.0, 0.0, 0, false, 0.0};
+Heater padA = {MOSFET_A_PIN, 0.0, 0.0, 0, false, 0.0};
+Heater padB = {MOSFET_B_PIN, 0.0, 0.0, 0, false, 0.0};
 
 // Sensoren
 OneWire oneWireA(ONE_WIRE_PIN_A);
@@ -154,24 +156,22 @@ void loop() {
   }
 
   // --- C. Befehle Empfangen (Binär & Schnell) ---
-  if (Serial.available() > 0) {
-    int8_t cmd = Serial.read(); // Header lesen
+  if (Serial.available() >= 5) {
+    uint8_t cmd = Serial.read();
 
-    // Kurz warten falls Payload noch unterwegs ist (timeout 10ms)
-    unsigned long timeout = millis();
-    while(Serial.available() < 4 && millis() - timeout < 10);
-
-    if (Serial.available() >= 4) {
-      long val = read_i32(); // Payload lesen (Sollwert * 100)
-      float target = (float)val / 100.0;
-      target = constrain(target, 0, MAX_SAFE_TEMP);
-
-      if (cmd == CMD_SET_A) {
-        padA.setpoint = target;
-      } else if (cmd == CMD_SET_B) {
-        padB.setpoint = target;
-      }
+    // Validierung: Ist das Kommando bekannt?
+    if (cmd != CMD_SET_A && cmd != CMD_SET_B) {
+        // Unbekanntes Byte -> Synchronisation verloren, Puffer leeren
+        while(Serial.available()) Serial.read();
+        return;
     }
+
+    long val = read_i32(); //
+    float target = (float)val / 100.0;
+    target = constrain(target, 0, MAX_SAFE_TEMP); //
+
+    if (cmd == CMD_SET_A) padA.setpoint = target;
+    if (cmd == CMD_SET_B) padB.setpoint = target;
   }
 
   // Kontinuierliches Update der PWM (muss oft aufgerufen werden!)

@@ -107,8 +107,8 @@ class AxisThread(threading.Thread):
                     if hdr == AxisOrder.LOG_DATA:
                         if ser.in_waiting >= 13:  # Time(4) + 3*Pos(4) + Stat(1)
                             _ = read_i32(ser)
-                            rh = read_i32(ser);
-                            rv = read_i32(ser);
+                            rh = read_i32(ser)
+                            rv = read_i32(ser)
                             rr = read_i32(ser)
                             _stat = read_i8(ser)
                             with state.lock:
@@ -164,8 +164,8 @@ class HeatThread(threading.Thread):
                     hdr = read_i8(ser)
                     if hdr == HeatOrder.LOG_DATA:
                         if ser.in_waiting >= 12:
-                            _ = read_i32(ser);
-                            ra = read_i32(ser);
+                            _ = read_i32(ser)
+                            ra = read_i32(ser)
                             rb = read_i32(ser)
                             with state.lock:
                                 state.temp['a'], state.temp['b'] = ra / 100.0, rb / 100.0
@@ -183,7 +183,7 @@ class HeatThread(threading.Thread):
 
                 while not self.cmd_queue.empty():
                     p_idx, val = self.cmd_queue.get()
-                    write_i8(ser, p_idx);
+                    write_i8(ser, p_idx)
                     write_i32(ser, int(val * 100))
                     with state.lock: state.setpoint['a' if p_idx == 1 else 'b'] = val
 
@@ -196,9 +196,9 @@ class HeatThread(threading.Thread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ETD QA Terminal V2 - ESTRO/SGRT")
+        self.setWindowTitle("SURF Terminal - ETD Surface Scanning QA")
         self.resize(1100, 700)
-        self.axis_q = queue.Queue();
+        self.axis_q = queue.Queue()
         self.heat_q = queue.Queue()
         self.t_data, self.ta_data, self.tb_data = [], [], []
         self.start_t = time.time()
@@ -207,28 +207,28 @@ class MainWindow(QMainWindow):
         AxisThread(AXIS_PORT, self.axis_q, self.log).start()
         HeatThread(HEAT_PORT, self.heat_q, self.log).start()
 
-        self.timer = QTimer();
+        self.timer = QTimer()
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(100)
 
     def setup_ui(self):
-        cw = QWidget();
-        self.setCentralWidget(cw);
+        cw = QWidget()
+        self.setCentralWidget(cw)
         layout = QHBoxLayout(cw)
 
         # Left Panel (Controls)
         left = QVBoxLayout()
-        self.status_lbl = QLabel("Initialisiere...");
+        self.status_lbl = QLabel("Initialisiere...")
         self.status_lbl.setStyleSheet("font-size: 13px; font-weight: bold;")
         self.status_lbl.setFrameStyle(QFrame.StyledPanel)
         left.addWidget(self.status_lbl)
 
-        self.console = QTextEdit();
+        self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setStyleSheet("background: #111; color: #0f0; font-family: 'Courier New';")
         left.addWidget(self.console)
 
-        self.cmd_line = QLineEdit();
+        self.cmd_line = QLineEdit()
         self.cmd_line.setPlaceholderText("Befehl hier (z.B. m h 50 10)")
         self.cmd_line.returnPressed.connect(self.parse_input)
         left.addWidget(self.cmd_line)
@@ -236,11 +236,11 @@ class MainWindow(QMainWindow):
         layout.addLayout(left, 1)
 
         # Right Panel (Plot)
-        self.fig = Figure(facecolor='#222');
+        self.fig = Figure(facecolor='#222')
         self.canvas = FigureCanvas(self.fig)
-        self.ax = self.fig.add_subplot(111);
+        self.ax = self.fig.add_subplot(111)
         self.ax.set_facecolor('#111')
-        self.ax.tick_params(colors='white');
+        self.ax.tick_params(colors='white')
         self.ax.grid(alpha=0.2)
         layout.addWidget(self.canvas, 2)
 
@@ -249,7 +249,7 @@ class MainWindow(QMainWindow):
         self.console.append(f"[{ts}] {msg}")
 
     def parse_input(self):
-        text = self.cmd_line.text().strip().lower();
+        text = self.cmd_line.text().strip().lower()
         self.cmd_line.clear()
         p = text.split()
         if not p: return
@@ -260,7 +260,7 @@ class MainWindow(QMainWindow):
                 ax_char = p[1]
                 if ax_char not in LIMITS: raise ValueError(f"Achse '{ax_char}' unbekannt.")
 
-                target = float(p[2]);
+                target = float(p[2])
                 speed = float(p[3])
                 min_v, max_v = LIMITS[ax_char]
 
@@ -311,16 +311,15 @@ class MainWindow(QMainWindow):
 
         # Plot Update (Cumulative)
         cur_t = time.time() - self.start_t
-        self.t_data.append(cur_t);
-        self.ta_data.append(ta);
-        self.tb_data.append(tb)
+        self.t_data.append(cur_t)
+        self.ta_data.append(ta); self.tb_data.append(tb)
 
         if len(self.t_data) % 10 == 0:
-            self.ax.clear();
+            self.ax.clear()
             self.ax.grid(alpha=0.3)
             self.ax.plot(self.t_data, self.ta_data, 'r-', label='Pad A', linewidth=1)
             self.ax.plot(self.t_data, self.tb_data, 'b-', label='Pad B', linewidth=1)
-            self.ax.set_xlabel("Zeit [s]", color='white');
+            self.ax.set_xlabel("Zeit [s]", color='white')
             self.ax.set_ylabel("Temp [°C]", color='white')
             self.ax.set_xlim(0, max(60, cur_t + 5))  # X-Achse startet immer bei 0
             self.ax.set_ylim(20, 55)
@@ -329,6 +328,6 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow();
+    window = MainWindow()
     window.show()
     sys.exit(app.exec())
