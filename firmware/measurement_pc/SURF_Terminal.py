@@ -7,6 +7,10 @@ import os
 from collections import deque
 from datetime import datetime
 import serial
+import json
+
+from PySide6.QtCore import QThread, Signal
+from PySide6.QtWidgets import QFileDialog
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
@@ -28,6 +32,7 @@ LIMITS = {
     'r': (-45, 45)  # Grad
 }
 
+SIMULATION_MODE = True  # Auf False setzen, wenn Hardware angeschlossen ist
 STEPS_PER_MM = 800.0
 STEPS_PER_DEG = 16.156
 
@@ -63,8 +68,8 @@ class SystemState:
         self.stable_reported = {'a': False, 'b': False}  # Spam-Schutz für Log
 
         # Stability Buffers (20 Sek bei ~1Hz Log-Rate)
-        self.temp_history_a = deque(maxlen=20)
-        self.temp_history_b = deque(maxlen=20)
+        self.temp_history_a = deque(maxlen=120)
+        self.temp_history_b = deque(maxlen=120)
 
         # Logging Status
         self.is_logging = False
@@ -139,28 +144,32 @@ class AxisThread(threading.Thread):
         self.port, self.cmd_queue, self.log = port, cmd_queue, log_callback
 
     def run(self):
+        ser = None
+        if not SIMULATION_MODE:
+            try:
+                ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
+                time.sleep(2)
+                ser.reset_input_buffer()
+                self.log(f"Achsen-Arduino verbunden ({self.port}).")
+            except Exception as e:
+                self.log(f"Fehler: Gerät nicht gefunden. Erpzwungene Simulation! ({e})")
         try:
-            ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
-            time.sleep(2)
-            ser.reset_input_buffer()
-            self.log(f"Achsen-Arduino verbunden ({self.port}).")
-
             while True:
-                # Watchdog
+                # Watchdog (läuft jetzt auch ohne Hardware)
                 with state.lock:
                     if not state.axis_ready and (time.time() - state.last_cmd_time > 15.0):
                         state.axis_ready = True
                         self.log("!! Watchdog: Axis Ready Reset (Timeout) !!")
 
-                # 1. Lesen
-                if ser.in_waiting >= 1:
+                # 1. Lesen (nur wenn Hardware da ist)
+                if ser and ser.is_open and ser.in_waiting >= 1:
                     try:
                         hdr = read_i8(ser)
                         if hdr == AxisOrder.LOG_DATA:
                             if ser.in_waiting >= 13:
                                 _ = read_i32(ser)
-                                rh = read_i32(ser);
-                                rv = read_i32(ser);
+                                rh = read_i32(ser)
+                                rv = read_i32(ser)
                                 rr = read_i32(ser)
                                 _stat = read_i8(ser)
                                 with state.lock:
@@ -180,22 +189,35 @@ class AxisThread(threading.Thread):
 
                 if can_send and not self.cmd_queue.empty():
                     cmd, args = self.cmd_queue.get()
-                    try:
-                        write_i8(ser, cmd)
-                        for a in args:
-                            if cmd == AxisOrder.MOVE_AXIS and args.index(a) == 0:
-                                write_i8(ser, a)  # Axis ID ist Byte
-                            else:
-                                write_i32(ser, a)
 
-                        if cmd in [AxisOrder.MOVE_AXIS, AxisOrder.HOME_AXIS]:
-                            with state.lock:
-                                state.axis_ready = False
-                                state.last_cmd_time = time.time()
-                    except Exception as e:
-                        self.log(f"Axis Error: {e}")
+                    # Befehl registrieren und System blockieren
+                    if cmd in [AxisOrder.MOVE_AXIS, AxisOrder.HOME_AXIS]:
+                        with state.lock:
+                            state.axis_ready = False
+                            state.last_cmd_time = time.time()
+
+                    # Nur an USB senden, wenn Hardware da ist
+                    if ser and ser.is_open:
+                        try:
+                            write_i8(ser, cmd)
+                            for a in args:
+                                if cmd == AxisOrder.MOVE_AXIS and args.index(a) == 0:
+                                    write_i8(ser, a)  # Axis ID ist Byte
+                                else:
+                                    write_i32(ser, a)
+                        except Exception as e:
+                            self.log(f"Axis Error: {e}")
+
+                # 3. --- SIMULATION (Nur aktiv wenn KEIN 'ser' vorhanden) ---
+                if ser is None:
+                    with state.lock:
+                        if not state.axis_ready:
+                            # Wir tun so, als ob die Achse sofort fertig ist
+                            state.axis_ready = True
+                            self.log(">> Simulation: Bewegung abgeschlossen.")
 
                 time.sleep(0.01)
+
         except Exception as e:
             self.log(f"AXIS CRITICAL: {e} (Port prüfen!)")
 
@@ -207,55 +229,148 @@ class HeatThread(threading.Thread):
         self.port, self.cmd_queue, self.log = port, cmd_queue, log_callback
 
     def run(self):
+        ser = None
+        if not SIMULATION_MODE:
+            try:
+                ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
+                # ... (Init Hardware) ...
+            except Exception:
+                self.log("Heiz-Simulation aktiv.")
         try:
-            ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
-            time.sleep(2)
-            ser.reset_input_buffer()
-            self.log(f"Heizung verbunden ({self.port}).")
-
             while True:
-                # Lesen
-                if ser.in_waiting >= 1:
-                    try:
-                        hdr = read_i8(ser)
-                        if hdr == HeatOrder.LOG_DATA:
-                            if ser.in_waiting >= 12:
-                                _ = read_i32(ser);
-                                ra = read_i32(ser);
-                                rb = read_i32(ser)
-                                with state.lock:
-                                    state.temp['a'], state.temp['b'] = ra / 100.0, rb / 100.0
-                                    state.temp_history_a.append(state.temp['a'])
-                                    state.temp_history_b.append(state.temp['b'])
+                    # 1. LESEN & STABILITÄT BERECHNEN (Für echte Hardware)
+                    if ser and ser.is_open and ser.in_waiting >= 1:
+                        try:
+                            hdr = read_i8(ser)
+                            if hdr == HeatOrder.LOG_DATA:
+                                if ser.in_waiting >= 12:
+                                    _ = read_i32(ser)
+                                    ra = read_i32(ser)
+                                    rb = read_i32(ser)
+                                    with state.lock:
+                                        state.temp['a'], state.temp['b'] = ra / 100.0, rb / 100.0
+                                        # Werte in Historie für Stabilitäts-Check schieben
+                                        state.temp_history_a.append(state.temp['a'])
+                                        state.temp_history_b.append(state.temp['b'])
 
-                                    # Stability Check
-                                    for p in ['a', 'b']:
-                                        hist = state.temp_history_a if p == 'a' else state.temp_history_b
-                                        if len(hist) == 20:
-                                            diff = [abs(x - state.setpoint[p]) for x in hist]
-                                            is_stable = max(diff) <= 0.2
-                                            state.stable[p] = is_stable
-                                        else:
-                                            state.stable[p] = False
-                    except Exception as e:
-                        print(f"Heat Read Error: {e}")
+                                        # Berechnung der Stabilität
+                                        for p in ['a', 'b']:
+                                            hist = state.temp_history_a if p == 'a' else state.temp_history_b
+                                            # Nutzt die volle Pufferlänge (z.B. 120 für 2 Minuten)
+                                            if len(hist) == hist.maxlen:
+                                                diff = [abs(x - state.setpoint[p]) for x in hist]
+                                                state.stable[p] = max(diff) <= 0.2
+                                            else:
+                                                state.stable[p] = False
+                        except Exception as e:
+                            print(f"Heat Read Error: {e}")
 
-                # Senden
-                while not self.cmd_queue.empty():
-                    p_idx, val = self.cmd_queue.get()
-                    try:
-                        write_i8(ser, p_idx)
-                        write_i32(ser, int(val * 100))
+                    # 2. SENDEN
+                    while not self.cmd_queue.empty():
+                        p_idx, val = self.cmd_queue.get()
                         with state.lock:
                             state.setpoint['a' if p_idx == 1 else 'b'] = val
-                            state.stable_reported['a' if p_idx == 1 else 'b'] = False  # Reset Meldung
-                    except Exception as e:
-                        self.log(f"Heat Send Error: {e}")
+                            state.stable_reported['a' if p_idx == 1 else 'b'] = False
 
-                time.sleep(0.05)
+                        if ser and ser.is_open:
+                            try:
+                                write_i8(ser, p_idx)
+                                write_i32(ser, int(val * 100))
+                            except Exception as e:
+                                self.log(f"Heat Send Error: {e}")
+
+                    # 3. --- SIMULATION (Nur aktiv wenn KEIN 'ser' vorhanden) ---
+                    if SIMULATION_MODE or ser is None:
+                        with state.lock:
+                            state.temp['a'] = state.setpoint['a']
+                            state.temp['b'] = state.setpoint['b']
+                            # WICHTIG: Damit der Interpreter weiterfährt!
+                            state.stable['a'] = True
+                            state.stable['b'] = True
+
+                    time.sleep(0.1)
         except Exception as e:
-            self.log(f"HEAT CRITICAL: {e} (Port prüfen!)")
+            self.log(f"HEAT THREAD ERROR: {e}")
 
+
+# ================= WORKER: JSON INTERPRETER =================
+class InterpreterThread(QThread):
+    log_msg = Signal(str)
+    show_checkpoint = Signal(str)
+    finished = Signal()
+
+    def __init__(self, sequence_data, axis_q, heat_q):
+        super().__init__()
+        self.sequence_data = sequence_data
+        self.axis_q = axis_q
+        self.heat_q = heat_q
+        self.wait_event = threading.Event()
+        self.running = True
+
+    def run(self):
+        name = self.sequence_data.get("name", "Unbekannte Messreihe")
+        self.log_msg.emit(f">>> STARTE BLUEPRINT: {name} <<<")
+
+        for step in self.sequence_data.get("sequence", []):
+            if not self.running:
+                break
+
+            cmd_type = step.get("type")
+
+            # --- BEFEHL: CHECKPOINT ---
+            if cmd_type == "checkpoint":
+                msg = step.get("msg", "Checkpoint erreichen und bestätigen.")
+                self.log_msg.emit(f"PAUSE: {msg}")
+                self.wait_event.clear()
+                self.show_checkpoint.emit(msg)
+                self.wait_event.wait()
+                self.log_msg.emit("Checkpoint bestätigt, fahre fort...")
+
+            # --- BEFEHL: ACHSEN BEWEGEN ---
+            elif cmd_type == "move":
+                speed = step.get("speed", 20.0)
+                for ax_char in ['H', 'V', 'R']:
+                    if ax_char in step:
+                        target = float(step[ax_char])
+                        ax_id = {'H': 0, 'V': 1, 'R': 2}[ax_char]
+                        factor = STEPS_PER_DEG if ax_id == 2 else STEPS_PER_MM
+
+                        # Warten bis System bereit für neuen Befehl
+                        while not state.axis_ready and self.running:
+                            time.sleep(0.1)
+
+                        self.log_msg.emit(f"Auto-Move: {ax_char} -> {target}")
+                        self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)]))
+                        with state.lock:
+                            state.axis_ready = False
+
+                        # Warten bis Arduino "COMMAND_DONE" zurückmeldet
+                        while not state.axis_ready and self.running:
+                            time.sleep(0.1)
+
+            # --- BEFEHL: HEIZUNG ---
+            elif cmd_type == "heat":
+                if "a" in step:
+                    self.heat_q.put((1, float(step["a"])))
+                if "b" in step:
+                    self.heat_q.put((2, float(step["b"])))
+
+                if step.get("wait_steady", False):
+                    self.log_msg.emit("Warte auf Temperaturstabilität (120 Sekunden Schwankung < 0.2°C)...")
+                    while self.running:
+                        with state.lock:
+                            a_ok = state.stable['a'] if "a" in step else True
+                            b_ok = state.stable['b'] if "b" in step else True
+                            if a_ok and b_ok:
+                                break
+                        time.sleep(1.0)
+                    self.log_msg.emit("Temperatur stabil!")
+
+        self.log_msg.emit(">>> BLUEPRINT BEENDET <<<")
+        self.finished.emit()
+
+    def confirm_checkpoint(self):
+        self.wait_event.set()
 
 # ================= GUI =================
 class MainWindow(QMainWindow):
@@ -339,7 +454,15 @@ class MainWindow(QMainWindow):
         l_btns.addWidget(self.btn_start)
         l_btns.addWidget(self.btn_stop)
         log_layout.addLayout(l_btns)
+        # --- NEU: JSON Button ---
+        self.btn_load_json = QPushButton("BLUEPRINT LADEN (JSON)")
+        self.btn_load_json.setStyleSheet(
+            "background: #8e44ad; color: white; font-weight: bold; padding: 10px; margin-top: 10px;")
+        self.btn_load_json.clicked.connect(self.load_blueprint)
+        log_layout.addWidget(self.btn_load_json)
+
         left_panel.addWidget(log_grp)
+
 
         # 4. Console & Input
         self.console = QTextEdit()
@@ -511,6 +634,29 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.log(f"Fehler: {e}")
 
+    def load_blueprint(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Blueprint laden", "", "JSON Files (*.json)")
+        if file_name:
+            try:
+                with open(file_name, 'r') as f:
+                    data = json.load(f)
+
+                self.interpreter = InterpreterThread(data, self.axis_q, self.heat_q)
+                self.interpreter.log_msg.connect(self.log)
+                self.interpreter.show_checkpoint.connect(self.handle_checkpoint)
+
+                self.btn_load_json.setEnabled(False)
+                self.interpreter.finished.connect(lambda: self.btn_load_json.setEnabled(True))
+                self.interpreter.start()
+
+            except Exception as e:
+                self.log(f"Fehler beim Laden der JSON: {e}")
+
+    def handle_checkpoint(self, msg):
+        QMessageBox.information(self, "Checkpoint", msg)
+        if hasattr(self, 'interpreter'):
+            self.interpreter.confirm_checkpoint()
+
     def update_ui(self):
         with state.lock:
             ph, pv, pr = state.pos['h'], state.pos['v'], state.pos['r']
@@ -544,14 +690,14 @@ class MainWindow(QMainWindow):
 
         # Plot Update
         cur_t = time.time() - self.start_t
-        self.t_data.append(cur_t);
-        self.ta_data.append(ta);
+        self.t_data.append(cur_t)
+        self.ta_data.append(ta)
         self.tb_data.append(tb)
 
         # Puffer begrenzen für Performance (letzte 1000 Punkte)
         if len(self.t_data) > 1000:
-            self.t_data.pop(0);
-            self.ta_data.pop(0);
+            self.t_data.pop(0)
+            self.ta_data.pop(0)
             self.tb_data.pop(0)
 
         if len(self.t_data) % 5 == 0:  # Nicht jeden Cycle zeichnen

@@ -131,6 +131,22 @@ void setKinematics(AccelStepper &st, float v_mm_s, float acc_mm_s2) {
   st.setAcceleration(acc_mm_s2 * STEPS_PER_MM);
 }
 
+// --- SAFETY: LIMIT CHECK FUNCTION ---
+bool isTargetSafe(uint8_t axis, int32_t target_raw) {
+    if (axis == AXIS_H) {
+        return (target_raw >= LIMIT_STEPS_H_MIN && target_raw <= LIMIT_STEPS_H_MAX);
+    }
+    else if (axis == AXIS_V) {
+        return (target_raw >= LIMIT_STEPS_V_MIN && target_raw <= LIMIT_STEPS_V_MAX);
+    }
+    else if (axis == AXIS_R) {
+        // Rotationsachse darf nur bewegt werden, wenn sie gehomed wurde (rAxisInitialized = true)
+        if (!rAxisInitialized) return false;
+        return (target_raw >= LIMIT_STEPS_R_MIN && target_raw <= LIMIT_STEPS_R_MAX);
+    }
+    return false; // Unbekannte Achse ist unsicher
+}
+
 // --- LOGGING ---
 void sendStatusLog() {
   write_i8(LOG_DATA);
@@ -296,19 +312,7 @@ void loop() {
         }
 
         // --- LIMIT CHECK ---
-        bool limits_ok = true;
-        if (axis == AXIS_H) {
-            if (target_raw > LIMIT_STEPS_H_MAX || target_raw < LIMIT_STEPS_H_MIN) limits_ok = false;
-        } 
-        else if (axis == AXIS_V) {
-            if (target_raw > LIMIT_STEPS_V_MAX || target_raw < LIMIT_STEPS_V_MIN) limits_ok = false;
-        }
-        else if (axis == AXIS_R) {
-            // Check: Wurde gehomed UND liegt im Limit?
-            if (!rAxisInitialized || target_raw > LIMIT_STEPS_R_MAX || target_raw < LIMIT_STEPS_R_MIN) {
-                limits_ok = false;
-            }
-        }
+        bool limits_ok = isTargetSafe(axis, target_raw);
 
         // --- AUSFÜHRUNG ---
         if (limits_ok) {
@@ -326,9 +330,9 @@ void loop() {
                     selectedStepper->run();
                     // Hier optional: weiterhin LOG_DATA senden, falls gewünscht
                 }
-                write_i8(COMMAND_DONE); // <--- WICHTIG: Python mitteilen, dass wir fertig sind
             }
         }
+        write_i8(COMMAND_DONE); // <--- WICHTIG: Python mitteilen, dass wir fertig sind
         break; 
       }
 

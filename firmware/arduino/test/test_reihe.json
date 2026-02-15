@@ -1,0 +1,11 @@
+{
+  "name": "PoP Messreihe - Couch 0 Grad",
+  "sequence": [
+    {"type": "checkpoint", "msg": "Bitte Phantom auf Couch ausrichten."},
+    {"type": "heat", "a": 35.0, "wait_steady": true},
+    {"type": "move", "H": 10.0, "speed": 20.0},
+    {"type": "checkpoint", "msg": "Erstes ETD Bild aufnehmen!"},
+    {"type": "move", "H": -10.0, "speed": 20.0},
+    {"type": "checkpoint", "msg": "Zweites ETD Bild aufnehmen!"}
+  ]
+}
