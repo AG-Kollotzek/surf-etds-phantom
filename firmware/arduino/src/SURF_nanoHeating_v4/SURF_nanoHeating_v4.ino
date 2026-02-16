@@ -25,8 +25,8 @@ const float MAX_SAFE_TEMP = 65.0f;
 const unsigned long WINDOW_MS = 1000;
 const float HEATING_WINDOW = 10.0f;
 const float KP = 0.15f;
-const float KI = 0.005f;
-const float MAX_I = 0.5f;
+const float KI = 0.0025f;
+const float MAX_I = 0.35f;
 
 struct Heater {
   int pin;
@@ -58,32 +58,39 @@ void write_i32(long val) { Serial.write((byte*)&val, 4); }
 void write_i8(int8_t val) { Serial.write(val); }
 
 void updateHeater(Heater &h, float currentTemp) {
-  if (currentTemp > MAX_SAFE_TEMP || currentTemp < 0) {
+  if (isnan(currentTemp) || currentTemp > MAX_SAFE_TEMP || currentTemp < -50.0) {
     digitalWrite(h.pin, LOW);
-    h.currentDuty = 0;
-    h.integral = 0;
+    h.state = false; h.integral = 0; h.currentDuty = 0;
     return;
   }
 
   float error = h.setpoint - currentTemp;
 
-  // Optimiertes Integral-Handling
-  if (fabs(error) < HEATING_WINDOW) {
-    h.integral += error * KI;
+  if (fabs(error) < 10.0) { // Dein gewähltes 10 Grad Fenster
+    float factor = 1.0f;
+
+    if (error < 0) {
+      // BREMSE 1: Wir sind drüber (Overshoot).
+      // Integral 3x so schnell abbauen, um den Peak abzuflachen.
+      factor = 3.0f;
+    }
+    else if (error < 2.0) {
+      // BREMSE 2: Wir sind fast da (letzte 2 Grad).
+      // Integral nur noch mit halber Kraft aufbauen ("Small T Correction").
+      factor = 0.5f;
+    }
+
+    h.integral += error * KI * factor;
     h.integral = constrain(h.integral, 0, MAX_I);
-  } 
-  // Wir nullen das Integral NICHT mehr hart bei Unterschreitung des Fensters,
-  // sondern nur, wenn wir über das Ziel hinausschießen (Overshoot-Schutz)
-  if (currentTemp > h.setpoint) {
-    h.integral = 0; 
+  } else {
+    h.integral = 0;
   }
 
   h.currentDuty = (error * KP) + h.integral;
   h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);
-  
-  if (currentTemp >= h.setpoint && error <= 0) {
-    h.currentDuty = 0.0;
-  }
+
+  // WICHTIG: Sicherstellen, dass hier KEIN "if (temp >= setpoint) duty = 0" steht!
+  // Das Integral muss die 0.4°C Overshoot durch den negativen Error selbst wegregeln.
 }
 
 void setup() {
