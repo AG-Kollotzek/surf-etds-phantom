@@ -32,6 +32,21 @@ LIMITS = {
     'r': (-45, 45)  # Grad
 }
 
+# ================= THERMISCHE KALIBRIERUNG =================
+# Lineare Regression aus "Kalibration HP vorne 19.csv"
+# Formel: T_innen = (T_aussen * CALIB_M) + CALIB_B
+CALIB_M = 1.170
+CALIB_B = -3.500
+
+def target_to_internal(target_outer):
+    """Konvertiert die gewünschte GUI-Außentemperatur in die Arduino-Innentemperatur."""
+    return (target_outer * CALIB_M) + CALIB_B
+
+def internal_to_outer(temp_internal):
+    """Konvertiert die vom Arduino gemeldete Innentemperatur in die reale Außentemperatur."""
+    return (temp_internal - CALIB_B) / CALIB_M
+# ===========================================================
+
 SIMULATION_MODE = False  # Auf False setzen, wenn Hardware angeschlossen ist
 STEPS_PER_MM = 800.0
 STEPS_PER_DEG = 16.156
@@ -233,6 +248,9 @@ class HeatThread(threading.Thread):
         if not SIMULATION_MODE:
             try:
                 ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
+                time.sleep(2)
+                ser.reset_input_buffer()
+                self.log(f"HeatingPad-Arduino verbunden ({self.port}).")
                 # ... (Init Hardware) ...
             except Exception:
                 self.log("Heiz-Simulation aktiv.")
@@ -248,7 +266,7 @@ class HeatThread(threading.Thread):
                                     ra = read_i32(ser)
                                     rb = read_i32(ser)
                                     with state.lock:
-                                        state.temp['a'], state.temp['b'] = ra / 100.0, rb / 100.0
+                                        state.temp['a'], state.temp['b'] = internal_to_outer(ra / 100.0), internal_to_outer(rb / 100.0)
                                         # Werte in Historie für Stabilitäts-Check schieben
                                         state.temp_history_a.append(state.temp['a'])
                                         state.temp_history_b.append(state.temp['b'])
@@ -275,7 +293,8 @@ class HeatThread(threading.Thread):
                         if ser and ser.is_open:
                             try:
                                 write_i8(ser, p_idx)
-                                write_i32(ser, int(val * 100))
+                                val_inner = target_to_internal(val)
+                                write_i32(ser, int(val_inner * 100))
                             except Exception as e:
                                 self.log(f"Heat Send Error: {e}")
 

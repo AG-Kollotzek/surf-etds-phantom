@@ -21,11 +21,12 @@ enum HeatOrder : uint8_t {
 #define MOSFET_A_PIN   5
 #define MOSFET_B_PIN   6
 
-const float MAX_SAFE_TEMP = 55.0f;
+const float MAX_SAFE_TEMP = 65.0f;
 const unsigned long WINDOW_MS = 1000;
+const float HEATING_WINDOW = 10.0f;
 const float KP = 0.15f;
 const float KI = 0.005f;
-const float MAX_I = 0.3f;
+const float MAX_I = 0.5f;
 
 struct Heater {
   int pin;
@@ -57,23 +58,32 @@ void write_i32(long val) { Serial.write((byte*)&val, 4); }
 void write_i8(int8_t val) { Serial.write(val); }
 
 void updateHeater(Heater &h, float currentTemp) {
-  if (isnan(currentTemp) || currentTemp > MAX_SAFE_TEMP || currentTemp < -50.0) {
+  if (currentTemp > MAX_SAFE_TEMP || currentTemp < 0) {
     digitalWrite(h.pin, LOW);
-    h.state = false; h.integral = 0; h.currentDuty = 0;
+    h.currentDuty = 0;
+    h.integral = 0;
     return;
   }
 
   float error = h.setpoint - currentTemp;
-  if (fabs(error) < 5.0) {
+
+  // Optimiertes Integral-Handling
+  if (fabs(error) < HEATING_WINDOW) {
     h.integral += error * KI;
     h.integral = constrain(h.integral, 0, MAX_I);
-  } else {
-    h.integral = 0;
+  } 
+  // Wir nullen das Integral NICHT mehr hart bei Unterschreitung des Fensters,
+  // sondern nur, wenn wir über das Ziel hinausschießen (Overshoot-Schutz)
+  if (currentTemp > h.setpoint) {
+    h.integral = 0; 
   }
 
   h.currentDuty = (error * KP) + h.integral;
   h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);
-  if (currentTemp >= h.setpoint) h.currentDuty = 0.0;
+  
+  if (currentTemp >= h.setpoint && error <= 0) {
+    h.currentDuty = 0.0;
+  }
 }
 
 void setup() {
