@@ -32,7 +32,7 @@ LIMITS = {
     'r': (-45, 45)  # Grad
 }
 
-SIMULATION_MODE = True  # Auf False setzen, wenn Hardware angeschlossen ist
+SIMULATION_MODE = False  # Auf False setzen, wenn Hardware angeschlossen ist
 STEPS_PER_MM = 800.0
 STEPS_PER_DEG = 16.156
 
@@ -376,7 +376,7 @@ class InterpreterThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ETD QA Terminal V3 - Full Integration")
+        self.setWindowTitle("SURF Terminal - QA for SGRT Scanner")
         self.resize(1200, 800)
 
         self.axis_q = queue.Queue()

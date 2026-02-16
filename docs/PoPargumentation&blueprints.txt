@@ -1,0 +1,64 @@
+Das sind hervorragende Neuigkeiten bezüglich der Hardware. Wenn die Elektronik und die NC-Endschalter sauber funktionieren, haben wir ein solides physikalisches Fundament.
+
+Lass uns dein geplantes Proof-of-Principle (PoP) und die notwendigen Schritte im Code kritisch durchgehen.
+
+---
+
+### 1. Argumentation: 3-DOF Aufbau (1-2k €) vs. 6-DOF Roboter (20k €)
+
+Dass deine vertikale Schiene (V) eine gekoppelte Bewegung aus Z-Shift und Pitch/Yaw erzeugt, ist **kein Ausschlusskriterium für ein PoP, sondern lediglich eine mathematische Randbedingung.**
+
+**Wie du das in einer Arbeit/Präsentation argumentierst:**
+
+* **Zweck des PoP:** Das Ziel der Testunit ist *nicht*, eine beliebige, unabhängige Patientenkorrektur in 6 Freiheitsgraden (6-DOF) durchzuführen (dafür bräuchte man den 20k-Roboter). Das Ziel ist es, die **Messgenauigkeit und Sensitivität des ETD-Scanners** zu validieren.
+* **Vorwärtskinematik als Ground Truth:** Da dein System starr und mechanisch exakt definiert ist, kannst du für jede Schienenposition  über die Vorwärtskinematik exakt die resultierende 6D-Pose  des Phantoms im Raum berechnen.
+* **Schlussfolgerung:** Auch wenn Z und Pitch/Yaw physikalisch gekoppelt sind, ist die erwartete Pose zu 100 % bekannt. Wenn der ETD-Scanner exakt diese (gekoppelte) Pose misst, ist der Proof of Principle für das Tracking-System erbracht. Der enorme Kostenvorteil rechtfertigt die reduzierte Kinematik für Validierungszwecke vollkommen.
+
+---
+
+### 2. Evaluierung: Gemischte Fahrten (H, V, R kombiniert)
+
+Das isolierte Abfahren (+/- 30mm/°) ist wichtig für die grundlegende Charakterisierung (Isolierung von Umkehrspiel, Achsen-Auflösung).
+
+**Der Nutzen gemischter Fahrten ist jedoch enorm hoch und absolut zu empfehlen, aus folgenden Gründen:**
+
+1. **Kalibrierung des Koordinatensystems (Cross-Talk):** Du misst das Phantom im ETD-Koordinatensystem. Die Ausrichtung der Couch (0° vs 90°) liefert dir eine grobe Transformation. Gemischte Raumkoordinaten erlauben dir aber, eine exakte Transformationsmatrix (ähnlich einer Hand-Eye-Calibration) zwischen Testunit und ETD zu berechnen.
+2. **Abdeckung des Sichtfeldes (FoV):** Optische Tracking-Systeme haben in den Randbereichen ihrer Linsen oft nicht-lineare Verzerrungen. Wenn du nur auf den Hauptachsen fährst, bleibst du meist im "Sweetspot". Gemischte Fahrten bringen das Phantom in die "Ecken" des 3D-Volumens.
+3. **Fehlerminimierung der Kinematik:** Durch die Kombination der Achsen kannst du validieren, ob sich mechanische Toleranzen (z.B. Durchbiegung der V-Schiene, wenn R weit ausgefahren ist) addieren.
+
+**Empfehlung:** Mache erst die symmetrischen isolierten Fahrten (Baseline). Danach generierst du eine Sequenz von z. B. 10-15 pseudozufälligen, gemischten Posen innerhalb deines sicheren Volumens ("Random Grid Sampling") und vergleichst die ETD-Daten mit der berechneten Kinematik.
+
+Das ist eine exzellente ingenieurstechnische Überlegung. Hier müssen wir ganz klar zwischen **theoretischer Auflösung (Resolution)** und **mechanischer Genauigkeit (Accuracy/Repeatability)** trennen.
+
+Die kurze Antwort: **Ja, du solltest unbedingt Nachkommastellen (0,1 mm und 0,1°) in deiner Software und deinen Blueprints erlauben.** Hier ist die realistische Einschätzung deiner Mechanik und warum das für den ETD wichtig ist:
+
+### 1. Linearachsen (H und V)
+
+* **Theorie:** Mit 800 Steps pro mm hast du eine elektronische Auflösung von **1,25 µm (0,00125 mm)** pro Step.
+* **Mechanische Realität:** Trapez- oder Kugelumlaufspindeln haben ein gewisses Umkehrspiel (Backlash). Bei guten Spindeln liegt das bei ca. 0,02 bis 0,05 mm. Selbst wenn wir mechanische Verwindungen des Aufbaus einrechnen, bist du mechanisch absolut in der Lage, echte **0,1 mm Schritte reproduzierbar** zu fahren. Die Closed-Loop-Treiber garantieren zudem, dass keine Schritte verloren gehen.
+* **Nutzen für das Proof of Principle:** Du sagst selbst, der ETD zeigt eine Nachkommastelle (0,1 mm) an. Wenn du die Sensitivität des ETD testen willst (z.B. *"Erkennt der Scanner eine Verschiebung von 0,3 mm?"*), **musst** du in der Lage sein, 0,1 mm oder 0,5 mm exakt anzufahren. Wenn du dich auf ganze Millimeter beschränkst, verschenkst du das enorme Potenzial deiner Hardware.
+
+### 2. Rotationsachse (R)
+
+* **Theorie:** Dein Code rechnet aktuell mit `16.156` Steps pro Grad. Das bedeutet, ein Step entspricht ca. **0,06°**.
+* **Mechanische Realität ("Anfängermäßiges Kegelgetriebe 1:2"):** Hier liegt der absolute Flaschenhals deines Systems. Selbstgedruckte oder einfache Kegelradgetriebe haben ein massives Umkehrspiel. Wenn der Motor die Richtung wechselt, greifen die Zahnflanken erst nach einem kleinen Leerlauf wieder. Dieses Spiel liegt bei einfachen Getrieben schnell bei **0,5° bis 1,5°**.
+* **Die Lösung (Software-Trick):** Du solltest in der Software trotzdem `0.1°` erlauben. Um das mechanische Spiel zu besiegen, kannst du in deinen Mess-Blueprint später eine **Umkehrspielkompensation (Backlash Compensation)** einbauen.
+* *Beispiel:* Du definierst, dass Winkel immer von "unten" angefahren werden. Wenn du auf `10.0°` willst, fährt er direkt dorthin. Wenn du danach auf `5.0°` zurück willst, fährt das Skript erst auf `3.0°` und dann wieder "vorwärts" auf `5.0°`. So liegen die Zahnräder immer auf derselben Flanke an und du erreichst auch mit einem billigen Getriebe eine Wiederholgenauigkeit von < 0,1°.
+
+
+
+### Fazit für die Python-Architektur (Blueprint / JSON)
+
+Dein Skript `SURF_Terminal.py` macht das unter der Haube bereits völlig richtig: Es liest den Input als Float ein (`float(p[2])`) und rechnet ihn erst im allerletzten Moment in ganze Integer-Steps für den Arduino um (`int(target * factor)`).
+
+**Behalte diese Logik für den Interpreter exakt so bei!** Dein JSON-Blueprint sollte z. B. so aussehen:
+
+```json
+{
+  "step_1": {"H": 10.5, "V": -5.2, "R": 15.0},
+  "step_2": {"H": 10.6, "V": -5.2, "R": 15.5}
+}
+
+```
+
+Indem du dem System erlaubst, 0,1 mm oder 0,1° anzufahren, kannst du später fantastische kleine "Jitter"-Messungen programmieren, um herauszufinden, ab wie vielen Millimetern der ETD-Scanner überhaupt eine Bewegung registriert (Sub-Millimeter-Tracking-Evaluation). Genau solche Metriken machen ein Proof of Principle wissenschaftlich extrem wertvoll.

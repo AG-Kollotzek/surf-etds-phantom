@@ -21,7 +21,7 @@ enum HeatOrder : uint8_t {
 #define MOSFET_A_PIN   5
 #define MOSFET_B_PIN   6
 
-const float MAX_SAFE_TEMP = 50.0f;
+const float MAX_SAFE_TEMP = 51.0f;
 const unsigned long WINDOW_MS = 1000;
 const float KP = 0.15f;
 const float KI = 0.005f;
@@ -78,6 +78,7 @@ void updateHeater(Heater &h, float currentTemp) {
 
 void setup() {
   Serial.begin(115200);
+  pinMode(11,OUTPUT); digitalWrite(11,HIGH);
   pinMode(padA.pin, OUTPUT); pinMode(padB.pin, OUTPUT);
   digitalWrite(padA.pin, LOW); digitalWrite(padB.pin, LOW);
   sensorsA.begin(); sensorsB.begin();
