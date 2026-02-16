@@ -215,11 +215,12 @@ class AxisThread(threading.Thread):
                     if ser and ser.is_open:
                         try:
                             write_i8(ser, cmd)
-                            for a in args:
-                                if cmd == AxisOrder.MOVE_AXIS and args.index(a) == 0:
-                                    write_i8(ser, a)  # Axis ID ist Byte
+                            # Nutze enumerate, um den echten Index i zu prüfen
+                            for i, a in enumerate(args):
+                                if cmd == AxisOrder.MOVE_AXIS and i == 0:
+                                    write_i8(ser, a)  # Nur das ERSTE Element ist die Axis ID (Byte)
                                 else:
-                                    write_i32(ser, a)
+                                    write_i32(ser, a)  # Alle anderen sind i32
                         except Exception as e:
                             self.log(f"Axis Error: {e}")
 
@@ -250,7 +251,7 @@ class HeatThread(threading.Thread):
                 ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
                 time.sleep(2)
                 ser.reset_input_buffer()
-                self.log(f"HeatingPad-Arduino verbunden ({self.port}).")
+                self.log(f"HeatingP-Arduino verbunden ({self.port}).")
                 # ... (Init Hardware) ...
             except Exception:
                 self.log("Heiz-Simulation aktiv.")
@@ -317,6 +318,7 @@ class InterpreterThread(QThread):
     log_msg = Signal(str)
     show_checkpoint = Signal(str)
     finished = Signal()
+    log_ctrl = Signal(str, str)
 
     def __init__(self, sequence_data, axis_q, heat_q):
         super().__init__()
@@ -384,6 +386,18 @@ class InterpreterThread(QThread):
                                 break
                         time.sleep(1.0)
                     self.log_msg.emit("Temperatur stabil!")
+            # --- BEFEHL: PAUSE (DELAY) ---
+            elif cmd_type == "delay":
+                delay_sec = float(step.get("time", 2.0))
+                self.log_msg.emit(f"Pausiere für {delay_sec} Sekunden...")
+                time.sleep(delay_sec)
+
+            # --- BEFEHL: LOGGING STEUERN ---
+            elif cmd_type == "logging":
+                action = step.get("action", "start")
+                prefix = step.get("prefix", "messung")
+                self.log_ctrl.emit(action, prefix)
+                time.sleep(0.5)  # Kurze Zeit geben, damit der Logger sicher anläuft/stoppt
 
         self.log_msg.emit(">>> BLUEPRINT BEENDET <<<")
         self.finished.emit()
@@ -435,7 +449,7 @@ class MainWindow(QMainWindow):
         heat_grp = QFrame()
         heat_grp.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         heat_layout = QVBoxLayout(heat_grp)
-        heat_layout.addWidget(QLabel("<b>HEIZUNG SOLLWERTE</b>"))
+        heat_layout.addWidget(QLabel("<b>HEATING PAD SURFACE TEMPERATUREN SOLLWERTE</b>"))
 
         h_inputs = QHBoxLayout()
         h_inputs.addWidget(QLabel("A [°C]:"))
@@ -663,6 +677,7 @@ class MainWindow(QMainWindow):
                 self.interpreter = InterpreterThread(data, self.axis_q, self.heat_q)
                 self.interpreter.log_msg.connect(self.log)
                 self.interpreter.show_checkpoint.connect(self.handle_checkpoint)
+                self.interpreter.log_ctrl.connect(self.handle_blueprint_logging)
 
                 self.btn_load_json.setEnabled(False)
                 self.interpreter.finished.connect(lambda: self.btn_load_json.setEnabled(True))
@@ -675,6 +690,20 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Checkpoint", msg)
         if hasattr(self, 'interpreter'):
             self.interpreter.confirm_checkpoint()
+
+    def handle_blueprint_logging(self, action, prefix):
+        if action == "start":
+            if state.is_logging: return
+            fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            with state.lock:
+                state.is_logging = True
+            self.logger_thread = LoggerThread(fname)
+            self.logger_thread.start()
+            self.btn_start.setEnabled(False)
+            self.btn_stop.setEnabled(True)
+            self.log(f"LOGGING VIA BLUEPRINT GESTARTET: {fname}")
+        elif action == "stop":
+            self.handle_logging("stop")  # Nutzt die bestehende Stop-Logik inkl. Plot-Speicherung
 
     def update_ui(self):
         with state.lock:

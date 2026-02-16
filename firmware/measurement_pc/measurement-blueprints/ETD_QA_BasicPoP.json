@@ -1,0 +1,100 @@
+{
+  "name": "ETD QA Basic Proof of Principle",
+  "sequence": [
+    {
+      "type": "checkpoint",
+      "msg": "Sind alle Achsen gehomed und das Phantom korrekt montiert?"
+    },
+    {
+      "type": "heat",
+      "a": 36.0,
+      "b": 36.0,
+      "wait_steady": true
+    },
+    {
+      "type": "logging",
+      "action": "start",
+      "prefix": "ETD_QA_BasicPoP"
+    },
+    {
+      "type": "checkpoint",
+      "msg": "Ist die Couch Rotation auf 0°?"
+    },
+    {
+      "type": "checkpoint",
+      "msg": "XRAY Image 1 Aufnehmen! (Baseline bei 0° Couch)"
+    },
+
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": -30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "V": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "V": 30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "V": -30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "V": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+    {
+      "type": "checkpoint",
+      "msg": "XRAY Image 2 Aufnehmen! (Nach erster Bewegungsserie)"
+    },
+    {
+      "type": "checkpoint",
+      "msg": "Couch auf 90° rotieren und Phantom drehen! (Bitte anschließend mit OK bestätigen)"
+    },
+
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": -30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "V": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "V": 30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "V": -30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "V": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -30.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+    {
+      "type": "checkpoint",
+      "msg": "XRAY Image 3 Aufnehmen! (Abschluss bei 90° Couch)"
+    },
+    {
+      "type": "logging",
+      "action": "stop"
+    }
+  ]
+}
