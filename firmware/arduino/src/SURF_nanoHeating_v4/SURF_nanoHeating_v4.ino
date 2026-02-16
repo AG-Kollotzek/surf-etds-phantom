@@ -21,7 +21,7 @@ enum HeatOrder : uint8_t {
 #define MOSFET_A_PIN   5
 #define MOSFET_B_PIN   6
 
-const float MAX_SAFE_TEMP = 51.0f;
+const float MAX_SAFE_TEMP = 55.0f;
 const unsigned long WINDOW_MS = 1000;
 const float KP = 0.15f;
 const float KI = 0.005f;
@@ -64,7 +64,7 @@ void updateHeater(Heater &h, float currentTemp) {
   }
 
   float error = h.setpoint - currentTemp;
-  if (fabs(error) < 2.0) {
+  if (fabs(error) < 5.0) {
     h.integral += error * KI;
     h.integral = constrain(h.integral, 0, MAX_I);
   } else {
