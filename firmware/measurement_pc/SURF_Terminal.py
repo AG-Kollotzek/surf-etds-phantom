@@ -153,10 +153,12 @@ class LoggerThread(threading.Thread):
 
 
 # ================= WORKER: ACHSEN =================
-class AxisThread(threading.Thread):
-    def __init__(self, port, cmd_queue, log_callback):
-        super().__init__(daemon=True)
-        self.port, self.cmd_queue, self.log = port, cmd_queue, log_callback
+class AxisThread(QThread):
+    log_msg = Signal(str)
+
+    def __init__(self, port, cmd_queue):
+        super().__init__()
+        self.port, self.cmd_queue = port, cmd_queue
 
     def run(self):
         ser = None
@@ -165,16 +167,16 @@ class AxisThread(threading.Thread):
                 ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
                 time.sleep(2)
                 ser.reset_input_buffer()
-                self.log(f"Achsen-Arduino verbunden ({self.port}).")
+                self.log_msg.emit(f"Achsen-Arduino verbunden ({self.port}).")
             except Exception as e:
-                self.log(f"Fehler: Gerät nicht gefunden. Erpzwungene Simulation! ({e})")
+                self.log_msg.emit(f"Fehler: Gerät nicht gefunden. Erpzwungene Simulation! ({e})")
         try:
             while True:
                 # Watchdog (läuft jetzt auch ohne Hardware)
                 with state.lock:
-                    if not state.axis_ready and (time.time() - state.last_cmd_time > 15.0):
+                    if not state.axis_ready and (time.time() - state.last_cmd_time > 60.0):
                         state.axis_ready = True
-                        self.log("!! Watchdog: Axis Ready Reset (Timeout) !!")
+                        self.log_msg.emit("!! Watchdog: Axis Ready Reset (Timeout) !!")
 
                 # 1. Lesen (nur wenn Hardware da ist)
                 if ser and ser.is_open and ser.in_waiting >= 1:
@@ -193,7 +195,7 @@ class AxisThread(threading.Thread):
                         elif hdr == AxisOrder.COMMAND_DONE:
                             with state.lock:
                                 state.axis_ready = True
-                            self.log(">> Achse: Bewegung abgeschlossen.")
+                            self.log_msg.emit(">> Achse: Bewegung abgeschlossen.")
                     except Exception as e:
                         print(f"Serial Read Error: {e}")
 
@@ -222,7 +224,7 @@ class AxisThread(threading.Thread):
                                 else:
                                     write_i32(ser, a)  # Alle anderen sind i32
                         except Exception as e:
-                            self.log(f"Axis Error: {e}")
+                            self.log_msg.emit(f"Axis Error: {e}")
 
                 # 3. --- SIMULATION (Nur aktiv wenn KEIN 'ser' vorhanden) ---
                 if ser is None:
@@ -230,19 +232,20 @@ class AxisThread(threading.Thread):
                         if not state.axis_ready:
                             # Wir tun so, als ob die Achse sofort fertig ist
                             state.axis_ready = True
-                            self.log(">> Simulation: Bewegung abgeschlossen.")
+                            self.log_msg.emit(">> Simulation: Bewegung abgeschlossen.")
 
                 time.sleep(0.01)
 
         except Exception as e:
-            self.log(f"AXIS CRITICAL: {e} (Port prüfen!)")
+            self.log_msg.emit(f"AXIS CRITICAL: {e} (Port prüfen!)")
 
 
 # ================= WORKER: HEIZUNG =================
-class HeatThread(threading.Thread):
-    def __init__(self, port, cmd_queue, log_callback):
-        super().__init__(daemon=True)
-        self.port, self.cmd_queue, self.log = port, cmd_queue, log_callback
+class HeatThread(QThread):
+    log_msg = Signal(str)
+    def __init__(self, port, cmd_queue):
+        super().__init__()
+        self.port, self.cmd_queue = port, cmd_queue
 
     def run(self):
         ser = None
@@ -251,10 +254,10 @@ class HeatThread(threading.Thread):
                 ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05)
                 time.sleep(2)
                 ser.reset_input_buffer()
-                self.log(f"HeatingP-Arduino verbunden ({self.port}).")
+                self.log_msg.emit(f"HeatingPad-Arduino verbunden ({self.port}).")
                 # ... (Init Hardware) ...
             except Exception:
-                self.log("Heiz-Simulation aktiv.")
+                self.log_msg.emit("Heiz-Simulation aktiv.")
         try:
             while True:
                     # 1. LESEN & STABILITÄT BERECHNEN (Für echte Hardware)
@@ -297,7 +300,7 @@ class HeatThread(threading.Thread):
                                 val_inner = target_to_internal(val)
                                 write_i32(ser, int(val_inner * 100))
                             except Exception as e:
-                                self.log(f"Heat Send Error: {e}")
+                                self.log_msg.emit(f"Heat Send Error: {e}")
 
                     # 3. --- SIMULATION (Nur aktiv wenn KEIN 'ser' vorhanden) ---
                     if SIMULATION_MODE or ser is None:
@@ -310,13 +313,13 @@ class HeatThread(threading.Thread):
 
                     time.sleep(0.1)
         except Exception as e:
-            self.log(f"HEAT THREAD ERROR: {e}")
+            self.log_msg.emit(f"HEAT THREAD ERROR: {e}")
 
 
 # ================= WORKER: JSON INTERPRETER =================
 class InterpreterThread(QThread):
     log_msg = Signal(str)
-    show_checkpoint = Signal(str)
+    show_prompt = Signal(str, str)  # NEU: Ersetzt show_checkpoint (Title, Message)
     finished = Signal()
     log_ctrl = Signal(str, str)
 
@@ -327,6 +330,7 @@ class InterpreterThread(QThread):
         self.heat_q = heat_q
         self.wait_event = threading.Event()
         self.running = True
+        self.proceed_flag = True  # NEU: Bestimmt, ob der Blueprint fortgesetzt wird
 
     def run(self):
         name = self.sequence_data.get("name", "Unbekannte Messreihe")
@@ -342,9 +346,17 @@ class InterpreterThread(QThread):
             if cmd_type == "checkpoint":
                 msg = step.get("msg", "Checkpoint erreichen und bestätigen.")
                 self.log_msg.emit(f"PAUSE: {msg}")
+
+                self.proceed_flag = False
                 self.wait_event.clear()
-                self.show_checkpoint.emit(msg)
+                self.show_prompt.emit("Checkpoint", msg)
                 self.wait_event.wait()
+
+                if not self.proceed_flag:
+                    self.log_msg.emit("!! Blueprint durch Benutzer am Checkpoint abgebrochen !!")
+                    self.running = False
+                    break
+
                 self.log_msg.emit("Checkpoint bestätigt, fahre fort...")
 
             # --- BEFEHL: ACHSEN BEWEGEN ---
@@ -356,18 +368,28 @@ class InterpreterThread(QThread):
                         ax_id = {'H': 0, 'V': 1, 'R': 2}[ax_char]
                         factor = STEPS_PER_DEG if ax_id == 2 else STEPS_PER_MM
 
-                        # Warten bis System bereit für neuen Befehl
+                        # 1. Warten, bis das System für einen neuen Befehl bereit ist
                         while not state.axis_ready and self.running:
-                            time.sleep(0.1)
+                            time.sleep(0.05)
+
+                        if not self.running: break
 
                         self.log_msg.emit(f"Auto-Move: {ax_char} -> {target}")
-                        self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)]))
-                        with state.lock:
-                            state.axis_ready = False
 
-                        # Warten bis Arduino "COMMAND_DONE" zurückmeldet
+                        # 2. Befehl abschicken
+                        self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)]))
+
+                        # 3. WICHTIG: Sicherstellen, dass der AxisThread den Befehl abgeholt hat
+                        while not self.axis_q.empty() and self.running:
+                            time.sleep(0.01)
+
+                        # Ein minimaler Puffer (50ms), damit der AxisThread genug Zeit hat,
+                        # state.axis_ready = False zu setzen, BEVOR wir in die nächste Schleife laufen
+                        time.sleep(0.05)
+
+                        # 4. Jetzt erst auf die Freigabe durch das Hardware-Feedback warten
                         while not state.axis_ready and self.running:
-                            time.sleep(0.1)
+                            time.sleep(0.05)
 
             # --- BEFEHL: HEIZUNG ---
             elif cmd_type == "heat":
@@ -377,32 +399,65 @@ class InterpreterThread(QThread):
                     self.heat_q.put((2, float(step["b"])))
 
                 if step.get("wait_steady", False):
-                    self.log_msg.emit("Warte auf Temperaturstabilität (120 Sekunden Schwankung < 0.2°C)...")
-                    while self.running:
+                    self.log_msg.emit("Warte auf Temperaturstabilität (max. 120 Sekunden)...")
+                    wait_time = 0
+                    is_stable = False
+
+                    # 120s Timeout Schleife
+                    while self.running and wait_time < 120:
                         with state.lock:
                             a_ok = state.stable['a'] if "a" in step else True
                             b_ok = state.stable['b'] if "b" in step else True
                             if a_ok and b_ok:
+                                is_stable = True
                                 break
                         time.sleep(1.0)
-                    self.log_msg.emit("Temperatur stabil!")
+                        wait_time += 1
+
+                    if self.running and not is_stable:
+                        self.log_msg.emit("Temperatur-Timeout (120s). Warte auf Benutzereingabe...")
+                        self.proceed_flag = False
+                        self.wait_event.clear()
+                        self.show_prompt.emit(
+                            "Temperatur-Timeout",
+                            "Die Temperatur ist nach 120 Sekunden noch nicht stabil.\n\nFür Simulationszwecke ignorieren und Blueprint fortsetzen?"
+                        )
+                        self.wait_event.wait()
+
+                        if not self.proceed_flag:
+                            self.log_msg.emit("!! Blueprint wegen instabiler Temperatur abgebrochen !!")
+                            self.running = False
+                            break
+                        else:
+                            self.log_msg.emit("Temperatur-Check übersprungen. Fahre fort...")
+
+                    elif is_stable:
+                        self.log_msg.emit("Temperatur stabil!")
+
             # --- BEFEHL: PAUSE (DELAY) ---
             elif cmd_type == "delay":
                 delay_sec = float(step.get("time", 2.0))
                 self.log_msg.emit(f"Pausiere für {delay_sec} Sekunden...")
-                time.sleep(delay_sec)
+
+                # Unterbrechbarer Sleep für sofortigen Abbruch bei 'exit bp'
+                slept = 0.0
+                while slept < delay_sec and self.running:
+                    time.sleep(0.1)
+                    slept += 0.1
 
             # --- BEFEHL: LOGGING STEUERN ---
             elif cmd_type == "logging":
                 action = step.get("action", "start")
                 prefix = step.get("prefix", "messung")
                 self.log_ctrl.emit(action, prefix)
-                time.sleep(0.5)  # Kurze Zeit geben, damit der Logger sicher anläuft/stoppt
+                time.sleep(0.5)
 
-        self.log_msg.emit(">>> BLUEPRINT BEENDET <<<")
+        self.log_msg.emit(">>> BLUEPRINT BEENDET/GESTOPPT <<<")
         self.finished.emit()
 
-    def confirm_checkpoint(self):
+    def confirm_prompt(self, proceed):
+        """Wird von der GUI aufgerufen, um Ja/Nein Antworten zu übergeben."""
+        self.proceed_flag = proceed
         self.wait_event.set()
 
 # ================= GUI =================
@@ -422,8 +477,14 @@ class MainWindow(QMainWindow):
         self.setup_ui()
 
         # Threads starten
-        AxisThread(AXIS_PORT, self.axis_q, self.log).start()
-        HeatThread(HEAT_PORT, self.heat_q, self.log).start()
+        self.axis_thread = AxisThread(AXIS_PORT, self.axis_q)
+        self.axis_thread.log_msg.connect(self.log)  # Signal mit Log-Funktion verknüpfen
+        self.axis_thread.start()
+
+        self.heat_thread = HeatThread(HEAT_PORT, self.heat_q)
+        self.heat_thread.log_msg.connect(self.log)  # Signal mit Log-Funktion verknüpfen
+        self.heat_thread.start()
+
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_ui)
@@ -662,6 +723,15 @@ class MainWindow(QMainWindow):
             elif text == "stop measurement":
                 self.handle_logging("stop")
 
+            # === BLUEPRINT ABBRUCH ===
+            elif text == "exit bp":
+                if hasattr(self, 'interpreter') and self.interpreter.isRunning():
+                    self.interpreter.running = False
+                    self.interpreter.confirm_prompt(False)  # Befreit den Thread, falls er auf eine Bestätigung wartet
+                    self.log("!! Blueprint manuell über Konsole abgebrochen !!")
+                else:
+                    self.log("!! Kein Blueprint aktiv.")
+
             else:
                 self.log("!! SYNTAX: m [h/v/r] [pos] [spd] | m zp | t [a/b] [temp] | start/stop measurement")
         except Exception as e:
@@ -676,7 +746,7 @@ class MainWindow(QMainWindow):
 
                 self.interpreter = InterpreterThread(data, self.axis_q, self.heat_q)
                 self.interpreter.log_msg.connect(self.log)
-                self.interpreter.show_checkpoint.connect(self.handle_checkpoint)
+                self.interpreter.show_prompt.connect(self.handle_prompt)
                 self.interpreter.log_ctrl.connect(self.handle_blueprint_logging)
 
                 self.btn_load_json.setEnabled(False)
@@ -686,10 +756,15 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.log(f"Fehler beim Laden der JSON: {e}")
 
-    def handle_checkpoint(self, msg):
-        QMessageBox.information(self, "Checkpoint", msg)
+    def handle_prompt(self, title, msg):
+        # Zeigt einen Dialog mit Yes und No Button
+        reply = QMessageBox.question(
+            self, title, msg,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+        )
         if hasattr(self, 'interpreter'):
-            self.interpreter.confirm_checkpoint()
+            # True bei 'Yes', False bei 'No'
+            self.interpreter.confirm_prompt(reply == QMessageBox.Yes)
 
     def handle_blueprint_logging(self, action, prefix):
         if action == "start":

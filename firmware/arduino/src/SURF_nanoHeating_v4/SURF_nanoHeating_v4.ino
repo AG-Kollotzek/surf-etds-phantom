@@ -26,7 +26,7 @@ const unsigned long WINDOW_MS = 1000;
 const float HEATING_WINDOW = 10.0f;
 const float KP = 0.15f;
 const float KI = 0.0025f;
-const float MAX_I = 0.35f;
+const float MAX_I = 0.25f;
 
 struct Heater {
   int pin;
@@ -69,22 +69,27 @@ void updateHeater(Heater &h, float currentTemp) {
   if (fabs(error) < 10.0) { // Dein gewähltes 10 Grad Fenster
     float factor = 1.0f;
 
+    float error = h.setpoint - currentTemp;
+
+  if (fabs(error) < 10.0) {
+    float factor = 1.0f;
+
     if (error < 0) {
-      // BREMSE 1: Wir sind drüber (Overshoot).
-      // Integral 3x so schnell abbauen, um den Peak abzuflachen.
-      factor = 3.0f;
+      factor = 5.0f; // Aggressiverer Abfluss bei Overshoot
     }
-    else if (error < 2.0) {
-      // BREMSE 2: Wir sind fast da (letzte 2 Grad).
-      // Integral nur noch mit halber Kraft aufbauen ("Small T Correction").
-      factor = 0.5f;
+    else if (error < 3.0) { // Früher (ab 3° Diff) bremsen
+      factor = 0.3f;        // Stärker bremsen (nur noch 30% KI)
     }
 
     h.integral += error * KI * factor;
-    h.integral = constrain(h.integral, 0, MAX_I);
+    h.integral = constrain(h.integral, 0, MAX_I); // MAX_I direkt hier auf 0.25 begrenzt
   } else {
     h.integral = 0;
   }
+
+  h.currentDuty = (error * KP) + h.integral;
+  h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);
+}
 
   h.currentDuty = (error * KP) + h.integral;
   h.currentDuty = constrain(h.currentDuty, 0.0, 1.0);

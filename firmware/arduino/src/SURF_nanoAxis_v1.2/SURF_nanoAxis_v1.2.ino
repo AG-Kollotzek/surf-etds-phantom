@@ -91,6 +91,8 @@ const unsigned long LOG_INTERVAL_MS = 50;
 bool isHoming = false; 
 bool isAlarmState = false;
 bool rAxisInitialized = false;
+bool hAxisInitialized = false;
+bool vAxisInitialized = false;
 bool wasMoving = false;
 
 // --- SERIAL HELPERS ---
