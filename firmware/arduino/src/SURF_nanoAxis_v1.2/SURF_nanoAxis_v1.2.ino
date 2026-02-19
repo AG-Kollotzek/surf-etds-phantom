@@ -72,7 +72,7 @@ const int BACKOFF_REPEATS = 2;       // 2x tasten für Präzision
 const unsigned long HOMING_TIMEOUT_MS = 20000;
 const unsigned long SW_DEBOUNCE_MS = 30;
 const float HOME_OFFSET_MM_H = 41.0; 
-const float HOME_OFFSET_MM_V = 62.5; 
+const float HOME_OFFSET_MM_V = 62.0; 
 const int HOMING_SIGN_H = +1;
 const int HOMING_SIGN_V = +1;
 
