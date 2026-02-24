@@ -22,58 +22,20 @@ from matplotlib.figure import Figure
 import serial.tools.list_ports
 
 
-# ================= AUTOMATISCHES PORT-MANAGEMENT =================
-def find_arduinos():
-    """Durchsucht alle USB-Ports und identifiziert Achsen- und Heiz-Arduino anhand ihres Datenstroms."""
-    print("Suche Arduinos... Bitte warten (ca. 3 Sekunden).")
-    ports = serial.tools.list_ports.comports()
-    found_axis = None
-    found_heat = None
+# ================= PORT-KONFIGURATION (AUTO-WEICHE) =================
+import platform
 
-    for p in ports:
-        # Überspringe bekannte Nicht-Arduino-Ports (Bluetooth etc.)
-        if "Bluetooth" in p.description or "BTH" in p.description:
-            continue
-
-        try:
-            # Port testweise öffnen
-            with serial.Serial(p.device, 115200, timeout=1.5) as ser:
-                # WICHTIG: Arduinos führen beim Öffnen des Ports einen Reset durch.
-                # Wir müssen kurz warten, bis sie booten und anfangen zu senden.
-                time.sleep(1.5)
-                ser.reset_input_buffer()
-
-                # Lausche für 1 Sekunde, was reinkommt
-                start_time = time.time()
-                while time.time() - start_time < 1.0:
-                    if ser.in_waiting > 0:
-                        # Lese das allererste Byte (sollte ein Header sein)
-                        hdr = int.from_bytes(ser.read(1), byteorder='little')
-
-                        # Prüfe gegen unsere definierten Header-Klassen
-                        if hdr == AxisOrder.LOG_DATA:
-                            found_axis = p.device
-                            print(f"[OK] Achsen-Controller gefunden an: {p.device}")
-                            break
-                        elif hdr == HeatOrder.LOG_DATA:
-                            found_heat = p.device
-                            print(f"[OK] Heiz-Controller gefunden an: {p.device}")
-                            break
-        except Exception:
-            # Port ist blockiert oder wirft einen Fehler -> ignorieren
-            pass
-
-    return found_axis, found_heat
-
-
-# Ports automatisch zuweisen lassen
-AXIS_PORT, HEAT_PORT = find_arduinos()
-
-if not AXIS_PORT or not HEAT_PORT:
-    print("WARNUNG: Es wurden nicht beide Arduinos gefunden!")
-    print(f"Axis: {AXIS_PORT} | Heat: {HEAT_PORT}")
-    print("Bitte USB-Verbindungen prüfen. Skript startet trotzdem (ggf. mit eingeschränkter Funktion).")
-# =================================================================
+if platform.system() == "Windows":
+    # Deine Windows-Ports vom Messlaptop
+    AXIS_PORT = "COM3"
+    HEAT_PORT = "COM4"
+    print(f"Lade Windows-Konfiguration: Axis={AXIS_PORT}, Heat={HEAT_PORT}")
+else:
+    # Deine Mac-Ports vom Entwickler-Rechner
+    AXIS_PORT = "/dev/cu.usbserial-120"
+    HEAT_PORT = "/dev/cu.usbserial-140"
+    print(f"Lade Mac-Konfiguration: Axis={AXIS_PORT}, Heat={HEAT_PORT}")
+# =====================================================================
 
 # ================= KONFIGURATION & LIMITS =================
 BAUD_RATE = 115200
