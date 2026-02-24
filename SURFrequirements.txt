@@ -1,8 +1,0 @@
-numpy>=2.1.0
-pandas==1.4.4
-scipy==1.13.1
-matplotlib==3.5.2
-pylinac==3.33.0
-pydicom==2.4.4
-PyPDF2==3.0.1
-pydantic==2.11.6
