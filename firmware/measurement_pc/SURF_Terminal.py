@@ -19,10 +19,63 @@ from PySide6.QtWidgets import (
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import serial.tools.list_ports
+
+
+# ================= AUTOMATISCHES PORT-MANAGEMENT =================
+def find_arduinos():
+    """Durchsucht alle USB-Ports und identifiziert Achsen- und Heiz-Arduino anhand ihres Datenstroms."""
+    print("Suche Arduinos... Bitte warten (ca. 3 Sekunden).")
+    ports = serial.tools.list_ports.comports()
+    found_axis = None
+    found_heat = None
+
+    for p in ports:
+        # Überspringe bekannte Nicht-Arduino-Ports (Bluetooth etc.)
+        if "Bluetooth" in p.description or "BTH" in p.description:
+            continue
+
+        try:
+            # Port testweise öffnen
+            with serial.Serial(p.device, 115200, timeout=1.5) as ser:
+                # WICHTIG: Arduinos führen beim Öffnen des Ports einen Reset durch.
+                # Wir müssen kurz warten, bis sie booten und anfangen zu senden.
+                time.sleep(1.5)
+                ser.reset_input_buffer()
+
+                # Lausche für 1 Sekunde, was reinkommt
+                start_time = time.time()
+                while time.time() - start_time < 1.0:
+                    if ser.in_waiting > 0:
+                        # Lese das allererste Byte (sollte ein Header sein)
+                        hdr = int.from_bytes(ser.read(1), byteorder='little')
+
+                        # Prüfe gegen unsere definierten Header-Klassen
+                        if hdr == AxisOrder.LOG_DATA:
+                            found_axis = p.device
+                            print(f"[OK] Achsen-Controller gefunden an: {p.device}")
+                            break
+                        elif hdr == HeatOrder.LOG_DATA:
+                            found_heat = p.device
+                            print(f"[OK] Heiz-Controller gefunden an: {p.device}")
+                            break
+        except Exception:
+            # Port ist blockiert oder wirft einen Fehler -> ignorieren
+            pass
+
+    return found_axis, found_heat
+
+
+# Ports automatisch zuweisen lassen
+AXIS_PORT, HEAT_PORT = find_arduinos()
+
+if not AXIS_PORT or not HEAT_PORT:
+    print("WARNUNG: Es wurden nicht beide Arduinos gefunden!")
+    print(f"Axis: {AXIS_PORT} | Heat: {HEAT_PORT}")
+    print("Bitte USB-Verbindungen prüfen. Skript startet trotzdem (ggf. mit eingeschränkter Funktion).")
+# =================================================================
 
 # ================= KONFIGURATION & LIMITS =================
-AXIS_PORT = "/dev/cu.usbserial-120"
-HEAT_PORT = "/dev/cu.usbserial-140"
 BAUD_RATE = 115200
 
 # Physikalische Grenzen
@@ -108,17 +161,21 @@ def read_i32(ser): return int.from_bytes(ser.read(4), 'little', signed=True)
 
 # ================= WORKER: LOGGING =================
 class LoggerThread(threading.Thread):
-    def __init__(self, filename, interval=0.5):
+    def __init__(self, filename, interval=0.1):
         super().__init__(daemon=True)
         self.filename = filename
         self.interval = interval
         self.running = True
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
 
     def run(self):
-        # Ordner erstellen falls nicht vorhanden
-        os.makedirs("messdaten", exist_ok=True)
-        filepath = os.path.join("messdaten", self.filename)
+        # Aktuelles Datum für Unterordner generieren (Format: YYYY-MM-DD)
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        target_dir = os.path.join("messdaten", date_str)
+
+        # Ordner erstellen falls nicht vorhanden (inkl. Datums-Unterordner)
+        os.makedirs(target_dir, exist_ok=True)
+        filepath = os.path.join(target_dir, self.filename)
 
         with open(filepath, 'w', newline='') as f:
             writer = csv.writer(f, delimiter=';')
@@ -133,7 +190,7 @@ class LoggerThread(threading.Thread):
             print(f"[LOGGER] Starte Aufzeichnung in {filepath}")
 
             while self.running:
-                now = time.time() - self.start_time
+                now = time.perf_counter() - self.start_time
                 with state.lock:
                     if not state.is_logging:
                         break
@@ -182,22 +239,32 @@ class AxisThread(QThread):
                 if ser and ser.is_open and ser.in_waiting >= 1:
                     try:
                         hdr = read_i8(ser)
+
                         if hdr == AxisOrder.LOG_DATA:
-                            if ser.in_waiting >= 13:
-                                _ = read_i32(ser)
-                                rh = read_i32(ser)
-                                rv = read_i32(ser)
-                                rr = read_i32(ser)
-                                _stat = read_i8(ser)
-                                with state.lock:
-                                    state.pos['h'], state.pos['v'], state.pos['r'] = \
-                                        rh / STEPS_PER_MM, rv / STEPS_PER_MM, rr / STEPS_PER_DEG
+                            # Wir erwarten genau 17 Bytes Payload nach dem Header.
+                            # Dank timeout=0.05s wartet PySerial automatisch, bis alles da ist.
+                            _millis = read_i32(ser)
+                            rh = read_i32(ser)
+                            rv = read_i32(ser)
+                            rr = read_i32(ser)
+                            _stat = read_i8(ser)
+
+                            with state.lock:
+                                # Positions-Update in Echtzeit
+                                state.pos['h'] = rh / STEPS_PER_MM
+                                state.pos['v'] = rv / STEPS_PER_MM
+                                state.pos['r'] = rr / STEPS_PER_DEG
+
                         elif hdr == AxisOrder.COMMAND_DONE:
                             with state.lock:
                                 state.axis_ready = True
                             self.log_msg.emit(">> Achse: Bewegung abgeschlossen.")
+
                     except Exception as e:
-                        print(f"Serial Read Error: {e}")
+                        # Wenn sich der Datenstrom verschluckt (z.B. Timeout),
+                        # leeren wir den Puffer um den nächsten Header sauber zu finden.
+                        # print(f"Serial Read Error: {e}")
+                        ser.reset_input_buffer()
 
                 # 2. Senden
                 can_send = False
@@ -265,27 +332,33 @@ class HeatThread(QThread):
                         try:
                             hdr = read_i8(ser)
                             if hdr == HeatOrder.LOG_DATA:
-                                if ser.in_waiting >= 12:
-                                    _ = read_i32(ser)
-                                    ra = read_i32(ser)
-                                    rb = read_i32(ser)
-                                    with state.lock:
-                                        state.temp['a'], state.temp['b'] = internal_to_outer(ra / 100.0), internal_to_outer(rb / 100.0)
-                                        # Werte in Historie für Stabilitäts-Check schieben
-                                        state.temp_history_a.append(state.temp['a'])
-                                        state.temp_history_b.append(state.temp['b'])
+                                # Wir erwarten exakt 12 Bytes (4x Time, 4x TempA, 4x TempB)
+                                # serial timeout=0.05 fängt Verzögerungen ab
+                                _millis = read_i32(ser)
+                                ra = read_i32(ser)
+                                rb = read_i32(ser)
 
-                                        # Berechnung der Stabilität
-                                        for p in ['a', 'b']:
-                                            hist = state.temp_history_a if p == 'a' else state.temp_history_b
-                                            # Nutzt die volle Pufferlänge (z.B. 120 für 2 Minuten)
-                                            if len(hist) == hist.maxlen:
-                                                diff = [abs(x - state.setpoint[p]) for x in hist]
-                                                state.stable[p] = max(diff) <= 0.2
-                                            else:
-                                                state.stable[p] = False
+                                with state.lock:
+                                    state.temp['a'] = internal_to_outer(ra / 100.0)
+                                    state.temp['b'] = internal_to_outer(rb / 100.0)
+
+                                    # Werte in Historie für Stabilitäts-Check schieben
+                                    state.temp_history_a.append(state.temp['a'])
+                                    state.temp_history_b.append(state.temp['b'])
+
+                                    # Berechnung der Stabilität
+                                    for p in ['a', 'b']:
+                                        hist = state.temp_history_a if p == 'a' else state.temp_history_b
+                                        if len(hist) == hist.maxlen:
+                                            diff = [abs(x - state.setpoint[p]) for x in hist]
+                                            state.stable[p] = max(diff) <= 0.2
+                                        else:
+                                            state.stable[p] = False
+
                         except Exception as e:
-                            print(f"Heat Read Error: {e}")
+                            # Puffer leeren bei einem Lesefehler / Timeout
+                            # print(f"Heat Read Error: {e}")
+                            ser.reset_input_buffer()
 
                     # 2. SENDEN
                     while not self.cmd_queue.empty():
