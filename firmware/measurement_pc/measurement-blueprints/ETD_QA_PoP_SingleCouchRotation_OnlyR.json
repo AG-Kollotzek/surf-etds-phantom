@@ -1,0 +1,105 @@
+{
+  "name": "ETD QA Basic Proof of Principle - Statistics for one Movement V",
+  "sequence": [
+    {
+      "type": "checkpoint",
+      "msg": "Sind alle Achsen gehomed und das Phantom korrekt montiert, und auf Nullposition gefahren?"
+    },
+    {
+      "type": "heat",
+      "a": 32.0,
+      "b": 32.0,
+      "wait_steady": true
+    },
+    {
+      "type": "logging",
+      "action": "start",
+      "prefix": "ETD_QA_PoP_SingleCouchOrientation"
+    },
+    {
+      "type": "checkpoint",
+      "msg": "Ist die Couch Rotation richtig eingestellt?"
+    },
+    {
+      "type": "checkpoint",
+      "msg": "Sphere Detection XRAY Image Aufnehmen! (Baseline bei 0° Couch)"
+    },
+
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 5.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 50.0 },
+
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": -5.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "R": 0.0, "speed": 5.0 },
+    { "type": "delay", "time": 2.0 },
+
+
+
+    { "type": "move", "H": 5.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+
+    {
+      "type": "checkpoint",
+      "msg": "Messung des Bewegungsprofil beenden?"
+    },
+
+    {
+      "type": "logging",
+      "action": "stop"
+    }
+  ]
+}
