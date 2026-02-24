@@ -38,7 +38,7 @@ const float STEPS_PER_MM = 800.0f;
 const float STEPS_PER_DEG_R = 16.156f;
 // --- SPEED LIMITS (SAFETY) ---
 const float MAX_SPEED_MM_S = 50.0;    // Limit für Linearachsen
-const float MAX_SPEED_DEG_S = 180.0;  // Limit für Rotationsachse
+const float MAX_SPEED_DEG_S = 90.0;  // Limit für Rotationsachse
 
 // Vorausberechnete Limits in Steps/Sec
 const long MAX_STEPS_PER_SEC_LIN = (long)(MAX_SPEED_MM_S * STEPS_PER_MM);
@@ -58,8 +58,8 @@ const long LIMIT_STEPS_V_MAX = (long)(LIMIT_V_MAX * STEPS_PER_MM);
 const long LIMIT_STEPS_V_MIN = (long)(LIMIT_V_MIN * STEPS_PER_MM); 
 
 //Rotation
-const float LIMIT_R_MAX = 45.0;   // Maximaler Winkel
-const float LIMIT_R_MIN = -45.0;  // Minimaler Winkel
+const float LIMIT_R_MAX = 120.0;   // Maximaler Winkel
+const float LIMIT_R_MIN = -30.0;  // Minimaler Winkel
 const long LIMIT_STEPS_R_MAX = (long)(LIMIT_R_MAX * STEPS_PER_DEG_R); // Umrechnung in Steps (basierend auf deinen 16.156 STEPS_PER_DEG_R)
 const long LIMIT_STEPS_R_MIN = (long)(LIMIT_R_MIN * STEPS_PER_DEG_R);
 

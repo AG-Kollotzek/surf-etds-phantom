@@ -42,7 +42,7 @@ BAUD_RATE = 115200
 
 # Physikalische Grenzen
 LIMITS = {
-    'h': (-45, 45),  # mm
+    'h': (-45, 25),  # mm
     'v': (-35, 50),  # mm
     'r': (-30, 120)  # Grad
 }
