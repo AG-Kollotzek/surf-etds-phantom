@@ -46,8 +46,8 @@ const long MAX_STEPS_PER_SEC_ROT = (long)(MAX_SPEED_DEG_S * STEPS_PER_DEG_R);
 
 // HIER SIND DIE GRENZEN der Achsen DEFINIERT (JETZT SEPARAT):
 // Horizontal
-const float LIMIT_H_MAX = 35.0;
-const float LIMIT_H_MIN = -35.0;
+const float LIMIT_H_MAX = 25.0;
+const float LIMIT_H_MIN = -45.0;
 const long LIMIT_STEPS_H_MAX = (long)(LIMIT_H_MAX * STEPS_PER_MM); 
 const long LIMIT_STEPS_H_MIN = (long)(LIMIT_H_MIN * STEPS_PER_MM); 
 
@@ -71,7 +71,7 @@ const float BACKOFF_MM = 3.0;
 const int BACKOFF_REPEATS = 2;       // 2x tasten für Präzision
 const unsigned long HOMING_TIMEOUT_MS = 20000;
 const unsigned long SW_DEBOUNCE_MS = 30;
-const float HOME_OFFSET_MM_H = 41.0; 
+const float HOME_OFFSET_MM_H = 33.0; 
 const float HOME_OFFSET_MM_V = 62.0; 
 const int HOMING_SIGN_H = +1;
 const int HOMING_SIGN_V = +1;
@@ -331,6 +331,11 @@ void loop() {
                 while (selectedStepper->distanceToGo() != 0) {
                     selectedStepper->run();
                     // Hier optional: weiterhin LOG_DATA senden, falls gewünscht
+                    if (millis() - lastLogTime >= LOG_INTERVAL_MS) { 
+                        sendStatusLog(); 
+                        lastLogTime = millis(); 
+                    }
+                    
                 }
             }
         }

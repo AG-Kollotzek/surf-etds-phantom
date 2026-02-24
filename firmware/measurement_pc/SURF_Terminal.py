@@ -42,9 +42,9 @@ BAUD_RATE = 115200
 
 # Physikalische Grenzen
 LIMITS = {
-    'h': (-35, 35),  # mm
+    'h': (-45, 45),  # mm
     'v': (-35, 50),  # mm
-    'r': (-45, 45)  # Grad
+    'r': (-30, 120)  # Grad
 }
 
 # ================= THERMISCHE KALIBRIERUNG =================
@@ -130,6 +130,13 @@ class LoggerThread(threading.Thread):
         self.running = True
         self.start_time = time.perf_counter()
 
+    def stop(self):
+        """Beendet die Schleife im Thread."""
+        self.running = False
+        # Optional: Falls der Thread in einem blockierenden seriellen Lesen hängt:
+        # if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+        #     self.ser.close()
+
     def run(self):
         # Aktuelles Datum für Unterordner generieren (Format: YYYY-MM-DD)
         date_str = datetime.now().strftime('%Y-%m-%d')
@@ -178,6 +185,13 @@ class AxisThread(QThread):
     def __init__(self, port, cmd_queue):
         super().__init__()
         self.port, self.cmd_queue = port, cmd_queue
+
+    def stop(self):
+        """Beendet die Schleife im Thread."""
+        self.running = False
+        # Optional: Falls der Thread in einem blockierenden seriellen Lesen hängt:
+        # if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+        #     self.ser.close()
 
     def run(self):
         ser = None
@@ -276,6 +290,13 @@ class HeatThread(QThread):
         super().__init__()
         self.port, self.cmd_queue = port, cmd_queue
 
+    def stop(self):
+        """Beendet die Schleife im Thread."""
+        self.running = False
+        # Optional: Falls der Thread in einem blockierenden seriellen Lesen hängt:
+        # if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+        #     self.ser.close()
+
     def run(self):
         ser = None
         if not SIMULATION_MODE:
@@ -366,6 +387,13 @@ class InterpreterThread(QThread):
         self.wait_event = threading.Event()
         self.running = True
         self.proceed_flag = True  # NEU: Bestimmt, ob der Blueprint fortgesetzt wird
+
+    def stop(self):
+        """Beendet die Schleife im Thread."""
+        self.running = False
+        # Optional: Falls der Thread in einem blockierenden seriellen Lesen hängt:
+        # if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+        #     self.ser.close()
 
     def run(self):
         name = self.sequence_data.get("name", "Unbekannte Messreihe")
@@ -814,6 +842,25 @@ class MainWindow(QMainWindow):
             self.log(f"LOGGING VIA BLUEPRINT GESTARTET: {fname}")
         elif action == "stop":
             self.handle_logging("stop")  # Nutzt die bestehende Stop-Logik inkl. Plot-Speicherung
+
+    def closeEvent(self, event):
+        """Wird aufgerufen, wenn das Fenster geschlossen wird."""
+        self.log("Beende Anwendung... Warte auf Threads.")
+
+        # Liste aller Threads, die wir stoppen müssen
+        threads_to_stop = [
+            self.axis_thread,
+            self.heat_thread,
+            self.logger_thread,
+            self.blueprint_thread
+        ]
+
+        for t in threads_to_stop:
+            if t and t.isRunning():
+                t.stop()  # Flag auf False setzen
+                t.wait()  # BLOCKIERT, bis der Thread wirklich fertig ist (WICHTIG!)
+
+        event.accept()  # Fenster darf jetzt wirklich zugehen
 
     def update_ui(self):
         with state.lock:
