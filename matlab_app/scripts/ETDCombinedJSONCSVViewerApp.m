@@ -42,6 +42,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
         TimeOffsetEdit matlab.ui.control.NumericEditField % seconds, applied to CSV
         AutoDelayButton matlab.ui.control.Button
         DelayResultLabel matlab.ui.control.Label
+        SyncPeaksButton matlab.ui.control.Button
 
         % Mapping
         MapLabel matlab.ui.control.Label
@@ -390,6 +391,74 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 dt = NaN; return;
             end
             dt = max(median(dE), median(dC)); % safe for resampling
+        end
+        
+        function onSyncPeaks(app)
+            if ~app.HasETD || ~app.HasCSV
+                uialert(app.UIFigure, 'Load both JSON and CSV first.', 'Sync Error');
+                return;
+            end
+            
+            % Wir nutzen die in der Dropdown-Liste gewählten Signale (z.B. lng und Pos_H)
+            [etdSigName, csvSigName] = app.getCompareSignals();
+            
+            tE = app.ETD.t;
+            yE = double(app.ETD.(etdSigName));
+            tC = app.CSV.Time_Sec; % Ohne Offset, da wir ihn neu berechnen
+            yC = double(app.CSV.(csvSigName));
+            
+            try
+                [t_csv_synced, t_json_synced] = app.synchronizeTimeAxes(tC, yC, tE, yE);
+                
+                % Neue Zeitachsen zuweisen
+                app.CSV.Time_Sec = t_csv_synced;
+                app.ETD.t = t_json_synced;
+                
+                % UI Offset resetten, da die Zeiten jetzt absolut synchronisiert sind
+                app.TimeOffsetEdit.Value = 0;
+                app.DelayResultLabel.Text = 'Sync by 5mm Peaks applied!';
+                
+                app.updateAll();
+            catch ME
+                uialert(app.UIFigure, ['Sync failed: ' ME.message], 'Sync Error');
+            end
+        end
+
+        function [t_csv_synced, t_json_synced] = synchronizeTimeAxes(app, t_csv, v_csv, t_json, v_json)
+            function [t_mid_first, t_mid_last] = findPeakMidpoints(t, v)
+                % Filter gegen leichtes Rauschen (Debouncing)
+                v_smooth = movmedian(v, 5, 'omitnan');
+                threshold = 4.5; 
+                is_peak = v_smooth > threshold;
+                
+                edges = diff([0; is_peak; 0]);
+                start_idx = find(edges == 1);
+                end_idx = find(edges == -1) - 1;
+                
+                if length(start_idx) >= 2
+                    idx_mid_first = round((start_idx(1) + end_idx(1)) / 2);
+                    t_mid_first = t(idx_mid_first);
+                    idx_mid_last = round((start_idx(end) + end_idx(end)) / 2);
+                    t_mid_last = t(idx_mid_last);
+                else
+                    error('Nicht genügend 5mm Peaks für die Synchronisation gefunden.');
+                end
+            end
+
+            [t_csv_first, t_csv_last] = findPeakMidpoints(t_csv, v_csv);
+            [t_json_first, t_json_last] = findPeakMidpoints(t_json, v_json);
+            
+            delta_t_csv = t_csv_last - t_csv_first;
+            delta_t_json = t_json_last - t_json_first;
+            
+            if delta_t_json > 0
+                scale_factor = delta_t_csv / delta_t_json;
+            else
+                scale_factor = 1; 
+            end
+            
+            t_csv_synced = t_csv - t_csv_first;
+            t_json_synced = (t_json - t_json_first) * scale_factor;
         end
 
         % -------------------- Plotting --------------------
@@ -833,6 +902,8 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
 
         % -------------------- UI --------------------
         function createComponents(app)
+
+           
             app.UIFigure = uifigure('Visible','off');
             app.UIFigure.Name = 'ETD Combined JSON + CSV Viewer';
             app.UIFigure.Position = [80 80 1350 820];
@@ -925,8 +996,12 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             app.TimeOffsetEdit.ValueChangedFcn = @(~,~)app.updateAll();
 
             app.AutoDelayButton = uibutton(app.LeftGrid,'push','Text','Auto delay (xcorr)');
-            app.AutoDelayButton.Layout.Row = 8; app.AutoDelayButton.Layout.Column = [1 2];
+            app.AutoDelayButton.Layout.Row = 8; app.AutoDelayButton.Layout.Column = 1;
             app.AutoDelayButton.ButtonPushedFcn = @(~,~)app.onAutoDelay();
+
+            app.SyncPeaksButton = uibutton(app.LeftGrid,'push','Text','Sync 5mm Peaks');
+            app.SyncPeaksButton.Layout.Row = 8; app.SyncPeaksButton.Layout.Column = 2;
+            app.SyncPeaksButton.ButtonPushedFcn = @(~,~)app.onSyncPeaks();
 
             app.DelayResultLabel = uilabel(app.LeftGrid,'Text','Auto delay: (not computed)','Interpreter','none');
             app.DelayResultLabel.Layout.Row = 9; app.DelayResultLabel.Layout.Column = [1 2];
@@ -986,5 +1061,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
 
             app.UIFigure.Visible = 'on';
         end
+
+    
     end
 end
