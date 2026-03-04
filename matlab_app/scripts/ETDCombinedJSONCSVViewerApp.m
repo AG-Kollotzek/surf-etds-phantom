@@ -173,6 +173,10 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 t = t - t(1);
                 T.Time_Sec = t;
 
+                if ismember('Pos_H', T.Properties.VariableNames)
+                    T.Pos_H = -T.Pos_H;
+                end
+
                 app.CSV = T;
                 app.HasCSV = true;
                 app.updateAll();
@@ -363,7 +367,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 return;
             end
 
-            tg = (tMin:dt:tMax)';
+            tg = (tMin:dt:tMax);
             yEg = interp1(tE, yE, tg, 'linear', 'extrap');
             yCg = interp1(tC, yC, tg, 'linear', 'extrap');
 
@@ -429,7 +433,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 % Filter gegen leichtes Rauschen (Debouncing)
                 v_smooth = movmedian(v, 5, 'omitnan');
                 threshold = 4.5; 
-                is_peak = v_smooth > threshold;
+                is_peak = abs(v_smooth) > threshold;
                 
                 edges = diff([0; is_peak; 0]);
                 start_idx = find(edges == 1);
