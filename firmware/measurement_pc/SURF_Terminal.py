@@ -140,7 +140,7 @@ class LoggerThread(threading.Thread):
     def run(self):
         # Aktuelles Datum für Unterordner generieren (Format: YYYY-MM-DD)
         date_str = datetime.now().strftime('%Y-%m-%d')
-        target_dir = os.path.join("messdaten", date_str)
+        target_dir = os.path.join("data", date_str)
 
         # Ordner erstellen falls nicht vorhanden (inkl. Datums-Unterordner)
         os.makedirs(target_dir, exist_ok=True)
@@ -697,8 +697,8 @@ class MainWindow(QMainWindow):
 
             # Screenshot speichern
             try:
-                os.makedirs("messdaten", exist_ok=True)
-                plot_name = os.path.join("messdaten", f"plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+                os.makedirs("data", exist_ok=True)
+                plot_name = os.path.join("data", f"plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
                 self.fig.savefig(plot_name)
                 self.log(f"LOGGING GESTOPPT. Plot gespeichert: {plot_name}")
                 QMessageBox.information(self, "Info", "Messung und Plot gespeichert.")
