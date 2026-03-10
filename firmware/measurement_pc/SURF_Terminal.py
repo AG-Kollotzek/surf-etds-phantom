@@ -662,8 +662,13 @@ class MainWindow(QMainWindow):
     def handle_logging(self, action):
         if action == "start":
             if state.is_logging: return
+
+            # Zeitstempel beim START fixieren und in der Klasse speichern
             self.current_m_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            fname = f"{prefix}_{self.current_m_timestamp}.csv"
+
+            # Dateiname für CSV (Prefix ist hier immer "messung")
+            fname = f"messung_{self.current_m_timestamp}.csv"
+
             with state.lock:
                 state.is_logging = True
             self.logger_thread = LoggerThread(fname)
@@ -683,10 +688,11 @@ class MainWindow(QMainWindow):
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
 
-            # Screenshot speichern
+            # Screenshot speichern mit DEMSELBEN Zeitstempel vom Start
             try:
                 os.makedirs("data", exist_ok=True)
-                plot_name = os.path.join("data", f"plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+                # Wir nutzen die Variable, die wir beim 'start' angelegt haben
+                plot_name = os.path.join("data", f"plot_{self.current_m_timestamp}.png")
                 self.fig.savefig(plot_name)
                 self.log(f"LOGGING GESTOPPT. Plot gespeichert: {plot_name}")
                 QMessageBox.information(self, "Info", "Messung und Plot gespeichert.")
@@ -828,17 +834,25 @@ class MainWindow(QMainWindow):
     def handle_blueprint_logging(self, action, prefix):
         if action == "start":
             if state.is_logging: return
+
+            # Zeitstempel beim START fixieren
             self.current_m_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            # Hier nutzen wir das 'prefix' aus der JSON-Datei
             fname = f"{prefix}_{self.current_m_timestamp}.csv"
+
             with state.lock:
                 state.is_logging = True
             self.logger_thread = LoggerThread(fname)
             self.logger_thread.start()
+
             self.btn_start.setEnabled(False)
             self.btn_stop.setEnabled(True)
             self.log(f"LOGGING VIA BLUEPRINT GESTARTET: {fname}")
+
         elif action == "stop":
-            self.handle_logging("stop")  # Nutzt die bestehende Stop-Logik inkl. Plot-Speicherung
+            # Wir rufen einfach die obige stop-Logik auf, die speichert dann auch den Plot
+            self.handle_logging("stop")
 
     def closeEvent(self, event):
         """Wird aufgerufen, wenn das Fenster geschlossen wird."""
