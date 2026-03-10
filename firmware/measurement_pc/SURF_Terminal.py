@@ -662,7 +662,8 @@ class MainWindow(QMainWindow):
     def handle_logging(self, action):
         if action == "start":
             if state.is_logging: return
-            fname = f"messung_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            self.current_m_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            fname = f"{prefix}_{self.current_m_timestamp}.csv"
             with state.lock:
                 state.is_logging = True
             self.logger_thread = LoggerThread(fname)
@@ -827,7 +828,8 @@ class MainWindow(QMainWindow):
     def handle_blueprint_logging(self, action, prefix):
         if action == "start":
             if state.is_logging: return
-            fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            self.current_m_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            fname = f"{prefix}_{self.current_m_timestamp}.csv"
             with state.lock:
                 state.is_logging = True
             self.logger_thread = LoggerThread(fname)
