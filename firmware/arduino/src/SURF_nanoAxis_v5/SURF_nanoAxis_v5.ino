@@ -13,7 +13,8 @@ enum OrderID : uint8_t {
   MOVE_AXIS = 1,
   HOME_AXIS = 2,
   STOP_ALL = 3,
-  COMMAND_DONE = 4, // Neu
+  COMMAND_DONE = 4,
+  SET_BACKLASH = 5,
   LOG_DATA = 10
 };
 
@@ -39,6 +40,10 @@ const float STEPS_PER_DEG_R = 16.156f;
 // --- SPEED LIMITS (SAFETY) ---
 const float MAX_SPEED_MM_S = 50.0;    // Limit für Linearachsen
 const float MAX_SPEED_DEG_S = 90.0;  // Limit für Rotationsachse
+// --- BACKLASH KONFIGURATION ---
+bool backlash_on = false;                     // Standardmäßig aus
+const int backlash_steps[3] = {0, 0, 4};      // Steps für [H, V, R]
+int last_dir[3] = {0, 0, 0};                  // Speichert letzte Laufrichtung
 
 // Vorausberechnete Limits in Steps/Sec
 const long MAX_STEPS_PER_SEC_LIN = (long)(MAX_SPEED_MM_S * STEPS_PER_MM);
@@ -316,7 +321,7 @@ void loop() {
         // --- LIMIT CHECK ---
         bool limits_ok = isTargetSafe(axis, target_raw);
 
-        // --- AUSFÜHRUNG ---
+      // --- AUSFÜHRUNG ---
         if (limits_ok) {
             AccelStepper* selectedStepper = nullptr;
             if (axis == AXIS_H) selectedStepper = &stepper_h;
@@ -324,23 +329,52 @@ void loop() {
             else if (axis == AXIS_R) selectedStepper = &stepper_r;
 
             if (selectedStepper != nullptr) {
+
+                // --- NEU: BACKLASH COMPENSATION ---
+                if (backlash_on && backlash_steps[axis] > 0) {
+                    long current_pos = selectedStepper->currentPosition();
+
+                    int new_dir = 0;
+                    if (target_raw > current_pos) new_dir = 1;
+                    else if (target_raw < current_pos) new_dir = -1;
+
+                    // Richtungswechsel erkannt?
+                    if (new_dir != 0 && last_dir[axis] != 0 && new_dir != last_dir[axis]) {
+                        long correction = backlash_steps[axis] * new_dir;
+
+                        // 1. Physisch das Spiel ausgleichen
+                        selectedStepper->setMaxSpeed(50.0); // Moderates Tempo für den Korrektur-Ruck
+                        selectedStepper->move(correction);
+                        while (selectedStepper->distanceToGo() != 0) {
+                            selectedStepper->run();
+                        }
+
+                        // 2. WICHTIG: Die logische Position für Python wiederherstellen!
+                        // Verhindert den Drift-Fehler komplett.
+                        selectedStepper->setCurrentPosition(current_pos);
+                    }
+
+                    if (new_dir != 0) {
+                        last_dir[axis] = new_dir;
+                    }
+                }
+                // --- ENDE BACKLASH ---
+
+                // --- URSPRÜNGLICHER BEWEGUNGSBEFEHL ---
                 selectedStepper->setMaxSpeed((float)speed_raw);
                 selectedStepper->moveTo((long)target_raw);
 
-                // Warten bis Ziel erreicht (Synchronisation mit Python Queue)
                 while (selectedStepper->distanceToGo() != 0) {
                     selectedStepper->run();
-                    // Hier optional: weiterhin LOG_DATA senden, falls gewünscht
-                    if (millis() - lastLogTime >= LOG_INTERVAL_MS) { 
-                        sendStatusLog(); 
-                        lastLogTime = millis(); 
+                    if (millis() - lastLogTime >= LOG_INTERVAL_MS) {
+                        sendStatusLog();
+                        lastLogTime = millis();
                     }
-                    
                 }
             }
         }
-        write_i8(COMMAND_DONE); // <--- WICHTIG: Python mitteilen, dass wir fertig sind
-        break; 
+        write_i8(COMMAND_DONE);
+        break;
       }
 
       case HOME_AXIS: {
@@ -350,12 +384,15 @@ void loop() {
         
         if (axis == AXIS_H) {
             success = doHomingAxis(stepper_h, PIN_END_H, HOMING_SIGN_H, HOME_OFFSET_MM_H);
+            last_dir[AXIS_H] = 0;
         } else if (axis == AXIS_V) {
             success = doHomingAxis(stepper_v, PIN_END_V, HOMING_SIGN_V, HOME_OFFSET_MM_V);
+            last_dir[AXIS_V] = 0;
         } else if (axis == AXIS_R) {
             stepper_r.setCurrentPosition(0);
             rAxisInitialized = true; 
             success = true;
+            last_dir[AXIS_R] = 0;
         }
 
         isHoming = false;
@@ -363,7 +400,14 @@ void loop() {
         write_i8(COMMAND_DONE); 
         break;
       }
-      
+
+      case SET_BACKLASH: {
+        int8_t state = read_i8();     // 1 = On, 0 = Off
+        backlash_on = (state == 1);
+        write_i8(COMMAND_DONE);
+        break;
+      }
+
       case STOP_ALL: {
         stepper_h.stop(); stepper_v.stop(); stepper_r.stop();
         break;

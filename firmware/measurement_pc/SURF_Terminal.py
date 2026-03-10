@@ -74,6 +74,7 @@ class AxisOrder:
     HOME_AXIS = 2
     STOP_ALL = 3
     COMMAND_DONE = 4
+    SET_BACKLASH = 5
 
 
 class HeatOrder:
@@ -185,13 +186,10 @@ class AxisThread(QThread):
     def __init__(self, port, cmd_queue):
         super().__init__()
         self.port, self.cmd_queue = port, cmd_queue
+        self.running = True  # FIX: Fehlt in deinem Code! Verhindert Absturz.
 
     def stop(self):
-        """Beendet die Schleife im Thread."""
         self.running = False
-        # Optional: Falls der Thread in einem blockierenden seriellen Lesen hängt:
-        # if hasattr(self, 'ser') and self.ser and self.ser.is_open:
-        #     self.ser.close()
 
     def run(self):
         ser = None
@@ -202,23 +200,20 @@ class AxisThread(QThread):
                 ser.reset_input_buffer()
                 self.log_msg.emit(f"Achsen-Arduino verbunden ({self.port}).")
             except Exception as e:
-                self.log_msg.emit(f"Fehler: Gerät nicht gefunden. Erpzwungene Simulation! ({e})")
+                self.log_msg.emit(f"Fehler: Gerät nicht gefunden. Erzwungene Simulation! ({e})")
         try:
-            while True:
-                # Watchdog (läuft jetzt auch ohne Hardware)
+            while self.running:
+                # Watchdog
                 with state.lock:
                     if not state.axis_ready and (time.time() - state.last_cmd_time > 60.0):
                         state.axis_ready = True
                         self.log_msg.emit("!! Watchdog: Axis Ready Reset (Timeout) !!")
 
-                # 1. Lesen (nur wenn Hardware da ist)
+                # 1. Lesen (wie bisher)
                 if ser and ser.is_open and ser.in_waiting >= 1:
                     try:
                         hdr = read_i8(ser)
-
                         if hdr == AxisOrder.LOG_DATA:
-                            # Wir erwarten genau 17 Bytes Payload nach dem Header.
-                            # Dank timeout=0.05s wartet PySerial automatisch, bis alles da ist.
                             _millis = read_i32(ser)
                             rh = read_i32(ser)
                             rv = read_i32(ser)
@@ -226,7 +221,6 @@ class AxisThread(QThread):
                             _stat = read_i8(ser)
 
                             with state.lock:
-                                # Positions-Update in Echtzeit
                                 state.pos['h'] = rh / STEPS_PER_MM
                                 state.pos['v'] = rv / STEPS_PER_MM
                                 state.pos['r'] = rr / STEPS_PER_DEG
@@ -235,11 +229,7 @@ class AxisThread(QThread):
                             with state.lock:
                                 state.axis_ready = True
                             self.log_msg.emit(">> Achse: Bewegung abgeschlossen.")
-
                     except Exception as e:
-                        # Wenn sich der Datenstrom verschluckt (z.B. Timeout),
-                        # leeren wir den Puffer um den nächsten Header sauber zu finden.
-                        # print(f"Serial Read Error: {e}")
                         ser.reset_input_buffer()
 
                 # 2. Senden
@@ -250,38 +240,34 @@ class AxisThread(QThread):
                 if can_send and not self.cmd_queue.empty():
                     cmd, args = self.cmd_queue.get()
 
-                    # Befehl registrieren und System blockieren
-                    if cmd in [AxisOrder.MOVE_AXIS, AxisOrder.HOME_AXIS]:
+
+                    # --- 2. EIGENTLICHES SENDEN AN DEN ARDUINO ---
+                    if ser and ser.is_open:
+                        try:
+                            # Sende Kommando-Header (1 Byte)
+                            write_i8(ser, cmd)
+
+                            # FIX: Das erste Argument (Achse) ist IMMER 1 Byte. Alle anderen Argumente sind 4 Bytes.
+                            if len(args) > 0:
+                                write_i8(ser, args[0])  # Achsen-ID (i8)
+                                for a in args[1:]:
+                                    write_i32(ser, a)  # Target und Speed (i32)
+
+                            with state.lock:
+                                state.axis_ready = False
+                                state.last_cmd_time = time.time()
+                        except Exception as e:
+                            self.log_msg.emit(f"Axis Send Error: {e}")
+
+                    elif SIMULATION_MODE or ser is None:
                         with state.lock:
                             state.axis_ready = False
                             state.last_cmd_time = time.time()
-
-                    # Nur an USB senden, wenn Hardware da ist
-                    if ser and ser.is_open:
-                        try:
-                            write_i8(ser, cmd)
-                            # Nutze enumerate, um den echten Index i zu prüfen
-                            for i, a in enumerate(args):
-                                if cmd == AxisOrder.MOVE_AXIS and i == 0:
-                                    write_i8(ser, a)  # Nur das ERSTE Element ist die Axis ID (Byte)
-                                else:
-                                    write_i32(ser, a)  # Alle anderen sind i32
-                        except Exception as e:
-                            self.log_msg.emit(f"Axis Error: {e}")
-
-                # 3. --- SIMULATION (Nur aktiv wenn KEIN 'ser' vorhanden) ---
-                if ser is None:
-                    with state.lock:
-                        if not state.axis_ready:
-                            # Wir tun so, als ob die Achse sofort fertig ist
-                            state.axis_ready = True
-                            self.log_msg.emit(">> Simulation: Bewegung abgeschlossen.")
 
                 time.sleep(0.01)
 
         except Exception as e:
             self.log_msg.emit(f"AXIS CRITICAL: {e} (Port prüfen!)")
-
 
 # ================= WORKER: HEIZUNG =================
 class HeatThread(QThread):
@@ -289,6 +275,7 @@ class HeatThread(QThread):
     def __init__(self, port, cmd_queue):
         super().__init__()
         self.port, self.cmd_queue = port, cmd_queue
+        self.running = True
 
     def stop(self):
         """Beendet die Schleife im Thread."""
@@ -309,7 +296,7 @@ class HeatThread(QThread):
             except Exception:
                 self.log_msg.emit("Heiz-Simulation aktiv.")
         try:
-            while True:
+            while self.running:
                     # 1. LESEN & STABILITÄT BERECHNEN (Für echte Hardware)
                     if ser and ser.is_open and ser.in_waiting >= 1:
                         try:
@@ -795,6 +782,14 @@ class MainWindow(QMainWindow):
                 else:
                     self.log("!! Kein Blueprint aktiv.")
 
+            # === BACKLASH CONTROL ===
+            elif text == "backlash on":
+                self.axis_q.put((AxisOrder.SET_BACKLASH, [1]))
+                self.log(">> Sende Backlash AKTIVIERT an Arduino")
+            elif text == "backlash off":
+                self.axis_q.put((AxisOrder.SET_BACKLASH, [0]))
+                self.log(">> Sende Backlash DEAKTIVIERT an Arduino")
+
             else:
                 self.log("!! SYNTAX: m [h/v/r] [pos] [spd] | m zp | t [a/b] [temp] | start/stop measurement")
         except Exception as e:
@@ -847,13 +842,14 @@ class MainWindow(QMainWindow):
         """Wird aufgerufen, wenn das Fenster geschlossen wird."""
         self.log("Beende Anwendung... Warte auf Threads.")
 
-        # Liste aller Threads, die wir stoppen müssen
-        threads_to_stop = [
-            self.axis_thread,
-            self.heat_thread,
-            self.logger_thread,
-            self.blueprint_thread
-        ]
+        # Sicheres Sammeln aller aktiven Threads
+        threads_to_stop = [self.axis_thread, self.heat_thread]
+
+        if self.logger_thread:
+            threads_to_stop.append(self.logger_thread)
+
+        if hasattr(self, 'interpreter'):
+            threads_to_stop.append(self.interpreter)
 
         for t in threads_to_stop:
             if t and t.isRunning():

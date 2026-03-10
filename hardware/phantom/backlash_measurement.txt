@@ -1,0 +1,39 @@
+09.03.26 nanoAxis_v5 nanoHeating_v4
+
+Zustand nach Homing. -> nächste bewegung in minus richtung um gleich weiterzu bewegen..
+
+Messuhr in kontakt mit schlitten gebracht, festspannen und vorspannen der messuhr, dann skala auf 0
+
+Fahrt m h -0.5 0.5 -> Ausschlag 54
+m h 0 0.5 -> Ausschlag 2
+m h 0.1 0.1 und m h 0 0.1 (uhr auf 0)
+m h -0.5 0.1 -> ausschlag 52
+m h 0 0.1 -> Ausschlag 2 - wieder 0en
+m h -0.3 0.1
+
+Annahme: Ausschläge zu groß (messuhr nur bis 0,4mm weil kreisbewegung, ab 0,4 cossinus fehler weil lineare messung)
+
+homing fahrt erneut
+m h -0.3 0.1 -Ausschlag 30
+m h 0 0.1 Ausschlag 0
+
+folgerung, auf horizontalachse kein relevanter backlash zu messen. (halber strichabstand war maximale beobachtung = 5µm fehler)
+fahrten sind extrem präzise. auch 0,1 mm werden perfekt angefahren.
+
+
+Rotation
+
+r 0-> 2,5 dann zero einstellen
+r 4 0.5 Ausschlag 41
+r 2.5 0.5 - ausschlag 6
+
+r 0 0.5
+r 1 0.5 - ausschlag 25
+r 0 0.5 - ausschlag 5
+
+
+10.03.26 korrigiert
+Treiber arduino zählt bei richtungswechsel nun 4 steps on top (das war der backlash von 6mm bei abstand 15mm der drehachse)
+homing
+m r -1,2 0.5 Ausschlag 31
+m r 0 0.5 ausschlag 0
