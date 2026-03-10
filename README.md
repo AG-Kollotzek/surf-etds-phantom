@@ -1,6 +1,6 @@
 # Test Unit – Mechatronik (3× NEMA23, Heizpads, VMA42, MATLAB)
 
-Kurzbeschreibung: PC (MATLAB-App) steuert Arduino-Firmware (Motorik + Heizer + Touch).
+Kurzbeschreibung: PC (Python Terminal) steuert Arduino-Firmware (Motorik + Heizer).
 
 ## Inhalte
 - firmware/ (Arduino: Motion, Heater, HMI, Comms)
