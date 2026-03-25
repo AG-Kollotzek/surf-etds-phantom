@@ -15,6 +15,7 @@ enum OrderID : uint8_t {
   STOP_ALL = 3,
   COMMAND_DONE = 4,
   SET_BACKLASH = 5,
+  SET_ZERO = 6,     // <--- Neu: Aktuelle Position zu Null definieren
   LOG_DATA = 10
 };
 
@@ -404,6 +405,23 @@ void loop() {
       case SET_BACKLASH: {
         int8_t state = read_i8();     // 1 = On, 0 = Off
         backlash_on = (state == 1);
+        write_i8(COMMAND_DONE);
+        break;
+      }
+
+      case SET_ZERO: {
+        int8_t axis = read_i8();
+        if (axis == AXIS_H) {
+            stepper_h.setCurrentPosition(0);
+            last_dir[AXIS_H] = 0;
+        } else if (axis == AXIS_V) {
+            stepper_v.setCurrentPosition(0);
+            last_dir[AXIS_V] = 0;
+        } else if (axis == AXIS_R) {
+            stepper_r.setCurrentPosition(0);
+            last_dir[AXIS_R] = 0;
+            rAxisInitialized = true; // Wichtig für die Sicherheitsprüfung
+        }
         write_i8(COMMAND_DONE);
         break;
       }

@@ -75,6 +75,7 @@ class AxisOrder:
     STOP_ALL = 3
     COMMAND_DONE = 4
     SET_BACKLASH = 5
+    SET_ZERO = 6  # <--- Neu
 
 
 class HeatOrder:
@@ -774,6 +775,16 @@ class MainWindow(QMainWindow):
                 else:
                     self.log("!! TEMP LIMIT: Bereich 10-50°C")
 
+            # === SET ZERO ===
+            elif text == "set r zero":
+                self.axis_q.put((AxisOrder.SET_ZERO, [2]))  # 2 entspricht AXIS_R
+                self.log(">> Sende: Setze aktuelle R-Position als 0")
+            elif text == "set h zero":
+                self.axis_q.put((AxisOrder.SET_ZERO, [0]))  # 2 entspricht AXIS_R
+                self.log(">> Sende: Setze aktuelle R-Position als 0")
+            elif text == "set v zero":
+                self.axis_q.put((AxisOrder.SET_ZERO, [1]))  # 2 entspricht AXIS_R
+                self.log(">> Sende: Setze aktuelle R-Position als 0")
             # === LOGGING (CMD LINE) ===
             elif text == "start measurement":
                 self.handle_logging("start")
