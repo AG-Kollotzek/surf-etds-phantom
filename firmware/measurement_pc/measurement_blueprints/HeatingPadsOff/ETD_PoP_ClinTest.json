@@ -1,0 +1,42 @@
+{
+  "name": "ETD Test of Tracking in clinical workflow",
+  "sequence": [
+    {
+      "type": "checkpoint",
+      "msg": "Sind alle Achsen gehomed und das Phantom korrekt montiert?"
+    },
+
+    {
+      "type": "logging",
+      "action": "start",
+      "prefix": "ETD_ClinTest"
+    },
+
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 5.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 50.0 },
+
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 10.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 10.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+
+
+    { "type": "move", "H": 0.0, "speed": 20.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 5.0, "speed": 50.0 },
+    { "type": "delay", "time": 2.0 },
+    { "type": "move", "H": 0.0, "speed": 50.0 },
+
+    {
+      "type": "logging",
+      "action": "stop"
+    }
+  ]
+}
