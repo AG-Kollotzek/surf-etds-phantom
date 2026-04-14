@@ -187,7 +187,7 @@ class AxisThread(QThread):
     def __init__(self, port, cmd_queue):
         super().__init__()
         self.port, self.cmd_queue = port, cmd_queue
-        self.running = True  # FIX: Fehlt in deinem Code! Verhindert Absturz.
+        self.running = True  
 
     def stop(self):
         self.running = False
