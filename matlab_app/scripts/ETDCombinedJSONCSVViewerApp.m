@@ -446,7 +446,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 v_sub = v(mask);
                 
                 if isempty(t_sub)
-                    error('Keine Daten im gewählten Zeitbereich gefunden.');
+                    error('Keine Daten im Suchbereich gefunden.');
                 end
 
                 v_smooth = movmedian(v_sub, 5, 'omitnan');
@@ -463,20 +463,28 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                     idx_mid_last = round((start_idx(end) + end_idx(end)) / 2);
                     t_mid_last = t_sub(idx_mid_last);
                 else
-                    error('Nicht genügend 5mm Peaks im gewählten Bereich gefunden.');
+                    error('Nicht genügend 5mm Peaks gefunden.');
                 end
             end
 
-            % Peaks innerhalb des Fensters finden
-            [t_csv_first, t_csv_last] = findPeakMidpoints(t_csv, v_csv, tMin, tMax);
+            % --- HIER IST DIE ANPASSUNG ---
+            
+            % CSV sucht in der kompletten Datei (von -Unendlich bis +Unendlich),
+            % da hier ohnehin nur 2 Peaks existieren.
+            [t_csv_first, t_csv_last] = findPeakMidpoints(t_csv, v_csv, -Inf, Inf);
+            
+            % JSON sucht NUR in dem von dir im UI eingestellten Fenster (tMin bis tMax),
+            % um die 2 richtigen von den 4 Peaks zu isolieren.
             [t_json_first, t_json_last] = findPeakMidpoints(t_json, v_json, tMin, tMax);
             
+            % ------------------------------
+
             delta_t_csv = t_csv_last - t_csv_first;
             delta_t_json = t_json_last - t_json_first;
             
             scale_factor = delta_t_csv / delta_t_json;
             
-            % Synchronisierung: Wir nullen beide auf den ERSTEN Peak im gewählten Fenster
+            % Synchronisierung: Wir nullen beide auf den ERSTEN Peak
             t_csv_synced = t_csv - t_csv_first;
             t_json_synced = (t_json - t_json_first) * scale_factor;
         end
