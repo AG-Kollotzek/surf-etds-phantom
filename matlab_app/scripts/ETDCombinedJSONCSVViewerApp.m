@@ -21,6 +21,10 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
         ExportPNGsButton matlab.ui.control.Button
         ExportCSVButton matlab.ui.control.Button
         RefreshButton matlab.ui.control.Button
+        SyncMinLabel matlab.ui.control.Label
+        SyncMinEdit matlab.ui.control.NumericEditField
+        SyncMaxLabel matlab.ui.control.Label
+        SyncMaxEdit matlab.ui.control.NumericEditField
 
         LeftPanel matlab.ui.container.Panel
         LeftGrid matlab.ui.container.GridLayout
@@ -116,6 +120,9 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
 
             app.JSONLabel.Text = "JSON: none";
             app.CSVLabel.Text  = "CSV: none";
+            app.SyncMinEdit.Value = 0;
+            app.SyncMaxEdit.Value = 200; % Standardmäßig die ersten 5 Minuten
+            app.updateAll();
 
             app.updateAll();
         end
@@ -403,24 +410,26 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 return;
             end
             
-            % Wir nutzen die in der Dropdown-Liste gewählten Signale (z.B. lng und Pos_H)
             [etdSigName, csvSigName] = app.getCompareSignals();
             
             tE = app.ETD.t;
             yE = double(app.ETD.(etdSigName));
-            tC = app.CSV.Time_Sec; % Ohne Offset, da wir ihn neu berechnen
+            tC = app.CSV.Time_Sec;
             yC = double(app.CSV.(csvSigName));
+
+            % Zeitbereich aus UI holen
+            tMinSearch = app.SyncMinEdit.Value;
+            tMaxSearch = app.SyncMaxEdit.Value;
             
             try
-                [t_csv_synced, t_json_synced] = app.synchronizeTimeAxes(tC, yC, tE, yE);
+                % Wir übergeben die Suchgrenzen an die Funktion
+                [t_csv_synced, t_json_synced] = app.synchronizeTimeAxes(tC, yC, tE, yE, tMinSearch, tMaxSearch);
                 
-                % Neue Zeitachsen zuweisen
                 app.CSV.Time_Sec = t_csv_synced;
                 app.ETD.t = t_json_synced;
                 
-                % UI Offset resetten, da die Zeiten jetzt absolut synchronisiert sind
                 app.TimeOffsetEdit.Value = 0;
-                app.DelayResultLabel.Text = 'Sync by 5mm Peaks applied!';
+                app.DelayResultLabel.Text = sprintf('Sync (%.1fs - %.1fs) applied!', tMinSearch, tMaxSearch);
                 
                 app.updateAll();
             catch ME
@@ -428,11 +437,20 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             end
         end
 
-        function [t_csv_synced, t_json_synced] = synchronizeTimeAxes(app, t_csv, v_csv, t_json, v_json)
-            function [t_mid_first, t_mid_last] = findPeakMidpoints(t, v)
-                % Filter gegen leichtes Rauschen (Debouncing)
-                v_smooth = movmedian(v, 5, 'omitnan');
-                threshold = 4.5; 
+        function [t_csv_synced, t_json_synced] = synchronizeTimeAxes(app, t_csv, v_csv, t_json, v_json, tMin, tMax)
+            % Interne Hilfsfunktion mit Range-Filter
+            function [t_mid_first, t_mid_last] = findPeakMidpoints(t, v, tMinRange, tMaxRange)
+                % Filter auf den Suchbereich
+                mask = (t >= tMinRange) & (t <= tMaxRange);
+                t_sub = t(mask);
+                v_sub = v(mask);
+                
+                if isempty(t_sub)
+                    error('Keine Daten im gewählten Zeitbereich gefunden.');
+                end
+
+                v_smooth = movmedian(v_sub, 5, 'omitnan');
+                threshold = 4.5;
                 is_peak = abs(v_smooth) > threshold;
                 
                 edges = diff([0; is_peak; 0]);
@@ -441,26 +459,24 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
                 
                 if length(start_idx) >= 2
                     idx_mid_first = round((start_idx(1) + end_idx(1)) / 2);
-                    t_mid_first = t(idx_mid_first);
+                    t_mid_first = t_sub(idx_mid_first);
                     idx_mid_last = round((start_idx(end) + end_idx(end)) / 2);
-                    t_mid_last = t(idx_mid_last);
+                    t_mid_last = t_sub(idx_mid_last);
                 else
-                    error('Nicht genügend 5mm Peaks für die Synchronisation gefunden.');
+                    error('Nicht genügend 5mm Peaks im gewählten Bereich gefunden.');
                 end
             end
 
-            [t_csv_first, t_csv_last] = findPeakMidpoints(t_csv, v_csv);
-            [t_json_first, t_json_last] = findPeakMidpoints(t_json, v_json);
+            % Peaks innerhalb des Fensters finden
+            [t_csv_first, t_csv_last] = findPeakMidpoints(t_csv, v_csv, tMin, tMax);
+            [t_json_first, t_json_last] = findPeakMidpoints(t_json, v_json, tMin, tMax);
             
             delta_t_csv = t_csv_last - t_csv_first;
             delta_t_json = t_json_last - t_json_first;
             
-            if delta_t_json > 0
-                scale_factor = delta_t_csv / delta_t_json;
-            else
-                scale_factor = 1; 
-            end
+            scale_factor = delta_t_csv / delta_t_json;
             
+            % Synchronisierung: Wir nullen beide auf den ERSTEN Peak im gewählten Fenster
             t_csv_synced = t_csv - t_csv_first;
             t_json_synced = (t_json - t_json_first) * scale_factor;
         end
@@ -907,7 +923,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
         % -------------------- UI --------------------
         function createComponents(app)
 
-           
+            % Create UIFigure and Layout
             app.UIFigure = uifigure('Visible','off');
             app.UIFigure.Name = 'ETD Combined JSON + CSV Viewer';
             app.UIFigure.Position = [80 80 1350 820];
@@ -919,7 +935,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             app.MainGrid.RowSpacing = 8;
             app.MainGrid.ColumnSpacing = 8;
 
-            % Top bar
+            % --- Top Bar ---
             app.TopBar = uigridlayout(app.MainGrid,[1 7]);
             app.TopBar.Layout.Row = 1;
             app.TopBar.Layout.Column = [1 2];
@@ -953,18 +969,20 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             app.RefreshButton.Layout.Column = 7;
             app.RefreshButton.ButtonPushedFcn = @(~,~)app.onRefresh();
 
-            % Left panel (controls)
+            % --- Left Panel (Controls) ---
             app.LeftPanel = uipanel(app.MainGrid,'Title','Controls');
             app.LeftPanel.Layout.Row = 2;
             app.LeftPanel.Layout.Column = 1;
 
-            app.LeftGrid = uigridlayout(app.LeftPanel,[18 2]);
-            app.LeftGrid.RowHeight = {22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,'1x'};
+            % Grid auf 20 Zeilen definiert
+            app.LeftGrid = uigridlayout(app.LeftPanel,[20 2]);
+            app.LeftGrid.RowHeight = {22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,22,'1x'};
             app.LeftGrid.ColumnWidth = {'1x','1x'};
             app.LeftGrid.Padding = [8 8 8 8];
             app.LeftGrid.RowSpacing = 6;
             app.LeftGrid.ColumnSpacing = 8;
 
+            % Zeile 1-2: Datenquellen
             app.ShowETDCheck = uicheckbox(app.LeftGrid,'Text','Show ETD (JSON)');
             app.ShowETDCheck.Layout.Row = 1; app.ShowETDCheck.Layout.Column = [1 2];
             app.ShowETDCheck.ValueChangedFcn = @(~,~)app.updateAll();
@@ -973,6 +991,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             app.ShowCSVCheck.Layout.Row = 2; app.ShowCSVCheck.Layout.Column = [1 2];
             app.ShowCSVCheck.ValueChangedFcn = @(~,~)app.updateAll();
 
+            % Zeile 3-5: Smoothing & Downsampling
             app.SmoothCheck = uicheckbox(app.LeftGrid,'Text','Smoothing (movmean)');
             app.SmoothCheck.Layout.Row = 3; app.SmoothCheck.Layout.Column = [1 2];
             app.SmoothCheck.ValueChangedFcn = @(~,~)app.updateAll();
@@ -989,6 +1008,7 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             app.DownsampleEdit.Layout.Row = 5; app.DownsampleEdit.Layout.Column = 2;
             app.DownsampleEdit.ValueChangedFcn = @(~,~)app.updateAll();
 
+            % Zeile 6-7: Plotting & Manueller Offset
             app.MarkersCheck = uicheckbox(app.LeftGrid,'Text','Show markers');
             app.MarkersCheck.Layout.Row = 6; app.MarkersCheck.Layout.Column = [1 2];
             app.MarkersCheck.ValueChangedFcn = @(~,~)app.updateAll();
@@ -999,30 +1019,44 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
             app.TimeOffsetEdit.Layout.Row = 7; app.TimeOffsetEdit.Layout.Column = 2;
             app.TimeOffsetEdit.ValueChangedFcn = @(~,~)app.updateAll();
 
+            % --- NEU: Zeile 8-9: Zeitbereich für Peak-Sync ---
+            app.SyncMinLabel = uilabel(app.LeftGrid,'Text','Sync Search Min (s)');
+            app.SyncMinLabel.Layout.Row = 8; app.SyncMinLabel.Layout.Column = 1;
+            app.SyncMinEdit = uieditfield(app.LeftGrid,'numeric');
+            app.SyncMinEdit.Layout.Row = 8; app.SyncMinEdit.Layout.Column = 2;
+
+            app.SyncMaxLabel = uilabel(app.LeftGrid,'Text','Sync Search Max (s)');
+            app.SyncMaxLabel.Layout.Row = 9; app.SyncMaxLabel.Layout.Column = 1;
+            app.SyncMaxEdit = uieditfield(app.LeftGrid,'numeric');
+            app.SyncMaxEdit.Layout.Row = 9; app.SyncMaxEdit.Layout.Column = 2;
+
+            % Zeile 10: Sync-Buttons
             app.AutoDelayButton = uibutton(app.LeftGrid,'push','Text','Auto delay (xcorr)');
-            app.AutoDelayButton.Layout.Row = 8; app.AutoDelayButton.Layout.Column = 1;
+            app.AutoDelayButton.Layout.Row = 10; app.AutoDelayButton.Layout.Column = 1;
             app.AutoDelayButton.ButtonPushedFcn = @(~,~)app.onAutoDelay();
 
             app.SyncPeaksButton = uibutton(app.LeftGrid,'push','Text','Sync 5mm Peaks');
-            app.SyncPeaksButton.Layout.Row = 8; app.SyncPeaksButton.Layout.Column = 2;
+            app.SyncPeaksButton.Layout.Row = 10; app.SyncPeaksButton.Layout.Column = 2;
             app.SyncPeaksButton.ButtonPushedFcn = @(~,~)app.onSyncPeaks();
 
+            % Zeile 11: Info-Label
             app.DelayResultLabel = uilabel(app.LeftGrid,'Text','Auto delay: (not computed)','Interpreter','none');
-            app.DelayResultLabel.Layout.Row = 9; app.DelayResultLabel.Layout.Column = [1 2];
+            app.DelayResultLabel.Layout.Row = 11; app.DelayResultLabel.Layout.Column = [1 2];
 
+            % Zeile 12-13: Mapping & Matrix-Auswahl
             app.MapLabel = uilabel(app.LeftGrid,'Text','Compare mapping');
-            app.MapLabel.Layout.Row = 10; app.MapLabel.Layout.Column = 1;
+            app.MapLabel.Layout.Row = 12; app.MapLabel.Layout.Column = 1;
             app.MapDrop = uidropdown(app.LeftGrid);
-            app.MapDrop.Layout.Row = 10; app.MapDrop.Layout.Column = 2;
+            app.MapDrop.Layout.Row = 12; app.MapDrop.Layout.Column = 2;
             app.MapDrop.ValueChangedFcn = @(~,~)app.updateAll();
 
             app.MatrixLabel = uilabel(app.LeftGrid,'Text','ETD Matrix element');
-            app.MatrixLabel.Layout.Row = 11; app.MatrixLabel.Layout.Column = 1;
+            app.MatrixLabel.Layout.Row = 13; app.MatrixLabel.Layout.Column = 1;
             app.MatrixDrop = uidropdown(app.LeftGrid);
-            app.MatrixDrop.Layout.Row = 11; app.MatrixDrop.Layout.Column = 2;
+            app.MatrixDrop.Layout.Row = 13; app.MatrixDrop.Layout.Column = 2;
             app.MatrixDrop.ValueChangedFcn = @(~,~)app.updateAll();
 
-            % Tabs right
+            % --- Right Panel (Tabs) ---
             app.Tabs = uitabgroup(app.MainGrid);
             app.Tabs.Layout.Row = 2;
             app.Tabs.Layout.Column = 2;
@@ -1065,7 +1099,6 @@ classdef ETDCombinedJSONCSVViewerApp < matlab.apps.AppBase
 
             app.UIFigure.Visible = 'on';
         end
-
     
     end
 end
