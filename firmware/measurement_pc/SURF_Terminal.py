@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QFileDialog
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QFrame, QTextEdit, QPushButton, QGridLayout, QMessageBox
+    QLabel, QLineEdit, QFrame, QTextEdit, QPushButton, QGridLayout, QMessageBox, QDialog, QFormLayout, QDialogButtonBox
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -125,12 +125,12 @@ def read_i32(ser): return int.from_bytes(ser.read(4), 'little', signed=True)
 
 # ================= WORKER: LOGGING =================
 class LoggerThread(threading.Thread):
-    def __init__(self, filename, interval=0.1):
+    def __init__(self, filename, interval=0.1, start_ref=None):
         super().__init__(daemon=True)
         self.filename = filename
         self.interval = interval
         self.running = True
-        self.start_time = time.perf_counter()
+        self.start_time = start_ref if start_ref else time.perf_counter()
 
     def stop(self):
         """Beendet die Schleife im Thread."""
@@ -211,7 +211,7 @@ class AxisThread(QThread):
                         self.log_msg.emit("!! Watchdog: Axis Ready Reset (Timeout) !!")
 
                 # 1. Lesen (wie bisher)
-                if ser and ser.is_open and ser.in_waiting >= 1:
+                if ser and ser.is_open and ser.in_waiting >= 18:
                     try:
                         hdr = read_i8(ser)
                         if hdr == AxisOrder.LOG_DATA:
@@ -261,8 +261,9 @@ class AxisThread(QThread):
                             self.log_msg.emit(f"Axis Send Error: {e}")
 
                     elif SIMULATION_MODE or ser is None:
+                        time.sleep(0.5)
                         with state.lock:
-                            state.axis_ready = False
+                            state.axis_ready = True
                             state.last_cmd_time = time.time()
 
                 time.sleep(0.01)
@@ -299,7 +300,7 @@ class HeatThread(QThread):
         try:
             while self.running:
                     # 1. LESEN & STABILITÄT BERECHNEN (Für echte Hardware)
-                    if ser and ser.is_open and ser.in_waiting >= 1:
+                    if ser and ser.is_open and ser.in_waiting >= 13:
                         try:
                             hdr = read_i8(ser)
                             if hdr == HeatOrder.LOG_DATA:
@@ -363,7 +364,8 @@ class HeatThread(QThread):
 # ================= WORKER: JSON INTERPRETER =================
 class InterpreterThread(QThread):
     log_msg = Signal(str)
-    show_prompt = Signal(str, str)  # NEU: Ersetzt show_checkpoint (Title, Message)
+    show_prompt = Signal(str, str)
+    request_qa_input = Signal(str, str, str)
     finished = Signal()
     log_ctrl = Signal(str, str)
 
@@ -392,6 +394,29 @@ class InterpreterThread(QThread):
                 break
 
             cmd_type = step.get("type")
+
+            # --- NEUER BEFEHL: QA INPUT ---
+            if cmd_type == "qa_input":
+                mode = step.get("mode", "surface_tracking")
+                point_id = str(step.get("point_id", "Unknown"))
+                msg = step.get("msg", "Bitte QA-Werte eintragen.")
+
+                self.log_msg.emit(f"Warte auf manuelle Eingabe ({mode})...")
+
+                self.proceed_flag = False
+                self.qa_data = None  # Temporärer Speicher
+                self.wait_event.clear()
+
+                # Signal an die GUI schicken
+                self.request_qa_input.emit(mode, point_id, msg)
+                self.wait_event.wait()
+
+                if not self.proceed_flag:
+                    self.log_msg.emit("!! Blueprint durch Benutzer am QA-Input abgebrochen !!")
+                    self.running = False
+                    break
+
+                self.log_msg.emit(f"Eingabe für {point_id} gespeichert.")
 
             # --- BEFEHL: CHECKPOINT ---
             if cmd_type == "checkpoint":
@@ -426,7 +451,8 @@ class InterpreterThread(QThread):
                         if not self.running: break
 
                         self.log_msg.emit(f"Auto-Move: {ax_char} -> {target}")
-
+                        with state.lock:
+                            state.axis_ready = False
                         # 2. Befehl abschicken
                         self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)]))
 
@@ -511,6 +537,52 @@ class InterpreterThread(QThread):
         self.proceed_flag = proceed
         self.wait_event.set()
 
+
+class QAInputDialog(QDialog):
+    def __init__(self, mode, point_id, msg, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"QA Eingabe: {mode.replace('_', ' ').title()} (ID: {point_id})")
+        self.setMinimumWidth(300)
+
+        self.layout = QVBoxLayout(self)
+        if msg:
+            self.layout.addWidget(QLabel(f"<b>{msg}</b>"))
+
+        self.form_layout = QFormLayout()
+        self.inputs = {}
+
+        # Felder definieren
+        fields = ['x', 'y', 'z']
+        if mode == 'surface_tracking' or mode == 'both':
+            fields.extend(['pitch', 'yaw', 'roll'])
+
+        for field in fields:
+            line_edit = QLineEdit()
+            # Erlaube nur Zahlen, nutze Platzhalter
+            line_edit.setPlaceholderText("0.00")
+            self.inputs[field] = line_edit
+            # Großschreibung für Label
+            self.form_layout.addRow(f"{field.upper()} [mm/°]:", line_edit)
+
+        self.layout.addLayout(self.form_layout)
+
+        # OK / Abbrechen Buttons
+        self.btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.btns.accepted.connect(self.accept)
+        self.btns.rejected.connect(self.reject)
+        self.layout.addWidget(self.btns)
+
+    def get_data(self):
+        """Liest die Felder aus, wandelt Kommas in Punkte um und gibt ein Dict zurück."""
+        data = {}
+        for key, widget in self.inputs.items():
+            val_str = widget.text().strip().replace(',', '.')
+            try:
+                data[key] = float(val_str) if val_str else ""
+            except ValueError:
+                data[key] = ""  # Bei leerer/falscher Eingabe
+        return data
+
 # ================= GUI =================
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -522,7 +594,9 @@ class MainWindow(QMainWindow):
         self.heat_q = queue.Queue()
         self.logger_thread = None
 
-        self.t_data, self.ta_data, self.tb_data = [], [], []
+        self.t_data = deque(maxlen=1000)
+        self.ta_data = deque(maxlen=1000)
+        self.tb_data = deque(maxlen=1000)
         self.start_t = time.time()
 
         self.setup_ui()
@@ -540,6 +614,8 @@ class MainWindow(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(100)
+
+        self.qa_csv_filepath = None  # Speichert den Pfad zur QA-Datei
 
     def setup_ui(self):
         cw = QWidget()
@@ -666,13 +742,14 @@ class MainWindow(QMainWindow):
 
             # Zeitstempel beim START fixieren und in der Klasse speichern
             self.current_m_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
+            # Der gemeinsame Nullpunkt für ALLE Dateien dieser Messung
+            self.measurement_start_ref = time.perf_counter()
             # Dateiname für CSV (Prefix ist hier immer "messung")
             fname = f"messung_{self.current_m_timestamp}.csv"
 
             with state.lock:
                 state.is_logging = True
-            self.logger_thread = LoggerThread(fname)
+            self.logger_thread = LoggerThread(fname, start_ref=self.measurement_start_ref)
             self.logger_thread.start()
 
             self.btn_start.setEnabled(False)
@@ -824,6 +901,7 @@ class MainWindow(QMainWindow):
                 self.interpreter.log_msg.connect(self.log)
                 self.interpreter.show_prompt.connect(self.handle_prompt)
                 self.interpreter.log_ctrl.connect(self.handle_blueprint_logging)
+                self.interpreter.request_qa_input.connect(self.handle_qa_input)
 
                 self.btn_load_json.setEnabled(False)
                 self.interpreter.finished.connect(lambda: self.btn_load_json.setEnabled(True))
@@ -848,13 +926,25 @@ class MainWindow(QMainWindow):
 
             # Zeitstempel beim START fixieren
             self.current_m_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
+            self.measurement_start_ref = time.perf_counter()
             # Hier nutzen wir das 'prefix' aus der JSON-Datei
             fname = f"{prefix}_{self.current_m_timestamp}.csv"
 
+            # NEU: Pfad für die zugehörige QA-Datei definieren (gleicher Timestamp!)
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            self.qa_csv_filepath = os.path.join("data", date_str, f"{prefix}_{self.current_m_timestamp}_QA.csv")
+
+            # Schreibe den Header für die QA CSV direkt beim Start
+            os.makedirs(os.path.dirname(self.qa_csv_filepath), exist_ok=True)
+            with open(self.qa_csv_filepath, 'w', newline='') as f:
+                writer = csv.writer(f, delimiter=';')
+                writer.writerow(
+                    ["Time_Sec", "Point_ID", "Mode", "H_pos", "V_pos", "R_pos", "Sphere_X", "Sphere_Y", "Sphere_Z",
+                     "Surf_X", "Surf_Y", "Surf_Z", "Pitch", "Yaw", "Roll"])
+
             with state.lock:
                 state.is_logging = True
-            self.logger_thread = LoggerThread(fname)
+            self.logger_thread = LoggerThread(fname, start_ref=self.measurement_start_ref)
             self.logger_thread.start()
 
             self.btn_start.setEnabled(False)
@@ -864,6 +954,38 @@ class MainWindow(QMainWindow):
         elif action == "stop":
             # Wir rufen einfach die obige stop-Logik auf, die speichert dann auch den Plot
             self.handle_logging("stop")
+
+    def handle_qa_input(self, mode, point_id, msg):
+        """Öffnet den Dialog und speichert die Daten in die QA-CSV"""
+        dialog = QAInputDialog(mode, point_id, msg, self)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_data()
+
+            # 1. Daten in die Datei schreiben
+            if self.qa_csv_filepath:
+                cur_t = round(time.perf_counter() - self.measurement_start_ref, 3)
+                # Aktuelle physikalische Achsenpositionen holen
+                with state.lock:
+                    ph, pv, pr = state.pos['h'], state.pos['v'], state.pos['r']
+
+                with open(self.qa_csv_filepath, 'a', newline='') as f:
+                    writer = csv.writer(f, delimiter=';')
+                    # Sicheres Auslesen der Keys (leerer String falls nicht vorhanden)
+                    writer.writerow([
+                        cur_t, point_id, mode, ph, pv, pr,
+                        data.get('x', ''), data.get('y', ''), data.get('z', ''),
+                        data.get('x', '') if mode == 'surface_tracking' else '',
+                        # Logik um zwischen Sphere und Tracking Spalten zu trennen
+                        data.get('y', '') if mode == 'surface_tracking' else '',
+                        data.get('z', '') if mode == 'surface_tracking' else '',
+                        data.get('pitch', ''), data.get('yaw', ''), data.get('roll', '')
+                    ])
+
+            # 2. Dem Interpreter sagen, dass es weitergehen kann
+            self.interpreter.confirm_prompt(True)
+        else:
+            # Bei Abbruch den Blueprint stoppen
+            self.interpreter.confirm_prompt(False)
 
     def closeEvent(self, event):
         """Wird aufgerufen, wenn das Fenster geschlossen wird."""
@@ -921,12 +1043,6 @@ class MainWindow(QMainWindow):
         self.t_data.append(cur_t)
         self.ta_data.append(ta)
         self.tb_data.append(tb)
-
-        # Puffer begrenzen für Performance (letzte 1000 Punkte)
-        if len(self.t_data) > 1000:
-            self.t_data.pop(0)
-            self.ta_data.pop(0)
-            self.tb_data.pop(0)
 
         if len(self.t_data) % 5 == 0:  # Nicht jeden Cycle zeichnen
             self.ax.clear()
