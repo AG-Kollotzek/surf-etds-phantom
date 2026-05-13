@@ -78,12 +78,6 @@
     { "type": "move", "R": 0.0, "speed": 2.0 },
     { "type": "delay", "time": 2.0 },
 
-    {
-      "type": "qa_input",
-      "mode": "surface_tracking",
-      "point_id": "4_zeroposition",
-      "msg": "Bitte alle 6 ExacTrac Surface Tracking Werte eingeben."
-    },
 
     {
       "type": "qa_input",
