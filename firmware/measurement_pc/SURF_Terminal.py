@@ -241,6 +241,10 @@ class AxisThread(QThread):
                 if can_send and not self.cmd_queue.empty():
                     cmd, args = self.cmd_queue.get()
 
+                    # FIX: Wir setzen den Status SOFORT auf False, sobald wir den Befehl aus der Queue nehmen!
+                    with state.lock:
+                        state.axis_ready = False
+                        state.last_cmd_time = time.time()
 
                     # --- 2. EIGENTLICHES SENDEN AN DEN ARDUINO ---
                     if ser and ser.is_open:
@@ -248,24 +252,21 @@ class AxisThread(QThread):
                             # Sende Kommando-Header (1 Byte)
                             write_i8(ser, cmd)
 
-                            # FIX: Das erste Argument (Achse) ist IMMER 1 Byte. Alle anderen Argumente sind 4 Bytes.
+                            # Das erste Argument (Achse) ist 1 Byte. Alle anderen Argumente sind 4 Bytes.
                             if len(args) > 0:
                                 write_i8(ser, args[0])  # Achsen-ID (i8)
                                 for a in args[1:]:
                                     write_i32(ser, a)  # Target und Speed (i32)
 
-                            with state.lock:
-                                state.axis_ready = False
-                                state.last_cmd_time = time.time()
                         except Exception as e:
                             self.log_msg.emit(f"Axis Send Error: {e}")
+                            with state.lock:
+                                state.axis_ready = True  # Bei Fehler sofort wieder freigeben
 
                     elif SIMULATION_MODE or ser is None:
-                        time.sleep(0.5)
+                        time.sleep(0.5)  # Simuliere Fahrzeit
                         with state.lock:
-                            state.axis_ready = True
-                            state.last_cmd_time = time.time()
-
+                            state.axis_ready = True  # Simulation sofort abschließen
                 time.sleep(0.01)
 
         except Exception as e:
@@ -451,20 +452,15 @@ class InterpreterThread(QThread):
                         if not self.running: break
 
                         self.log_msg.emit(f"Auto-Move: {ax_char} -> {target}")
-                        with state.lock:
-                            state.axis_ready = False
-                        # 2. Befehl abschicken
+
+                        # 2. Befehl in die Queue legen (NICHT den Status hier ändern!)
                         self.axis_q.put((AxisOrder.MOVE_AXIS, [ax_id, int(target * factor), int(speed * factor)]))
 
-                        # 3. WICHTIG: Sicherstellen, dass der AxisThread den Befehl abgeholt hat
-                        while not self.axis_q.empty() and self.running:
+                        # 3. WICHTIG: Warten, bis der AxisThread den Befehl gegriffen und das ready-Flag auf False gesetzt hat
+                        while state.axis_ready and self.running:
                             time.sleep(0.01)
 
-                        # Ein minimaler Puffer (50ms), damit der AxisThread genug Zeit hat,
-                        # state.axis_ready = False zu setzen, BEVOR wir in die nächste Schleife laufen
-                        time.sleep(0.05)
-
-                        # 4. Jetzt erst auf die Freigabe durch das Hardware-Feedback warten
+                        # 4. Jetzt warten wir ganz entspannt, bis das Hardware-Feedback (Arduino) das Flag wieder auf True setzt
                         while not state.axis_ready and self.running:
                             time.sleep(0.05)
 
