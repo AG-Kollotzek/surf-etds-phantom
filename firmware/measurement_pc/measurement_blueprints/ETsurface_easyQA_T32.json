@@ -7,13 +7,19 @@
     },
     {
       "type": "checkpoint",
-      "msg": "Ist die Couch Rotation auf 0° und Heating Pads auf RT? - Logging wird nach dem ersten XRAY gestartet."
+      "msg": "Ist die Couch Rotation auf 0° und Heating Pads auf 32°C?"
+    },
+    {
+      "type": "heat",
+      "a": 32.0,
+      "b": 32.0,
+      "wait_steady": true
     },
 
     {
       "type": "logging",
       "action": "start",
-      "prefix": "ETsurface_easyQA"
+      "prefix": "ETsurface_easyQA_T32"
     },
     {
       "type": "qa_input",
