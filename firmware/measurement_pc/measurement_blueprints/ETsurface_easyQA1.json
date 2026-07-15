@@ -21,7 +21,6 @@
       "msg": "Bitte Sphere Detection durchführen und initiales Isozentrum (Winston-Lutz Pointer) eingeben."
     },
 
-    { "type": "move", "H": 0.0, "speed": 20.0 },
     { "type": "delay", "time": 2.0 },
     { "type": "move", "H": 5.0, "speed": 20.0 },
     { "type": "delay", "time": 2.0 },
