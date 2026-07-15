@@ -1,0 +1,11 @@
+Time_Sec;Point_ID;Mode;H_pos;V_pos;R_pos;Sphere_X;Sphere_Y;Sphere_Z;Surf_X;Surf_Y;Surf_Z;Pitch;Yaw;Roll
+29.913;0_Referenz;sphere_detection;0.0;0.0;0.0;-0.3;0.1;0.1;;;;;;
+129.35;1_minVerschub;sphere_detection;-10.0;20.0;0.9903441445902452;-0.5;-17.8;-0.5;;;;;;
+169.535;2_zeroposition;sphere_detection;0.0;0.0;0.0;-0.3;0.2;0.1;;;;;;
+295.057;3_MaxVerschub;sphere_detection;-30.0;50.0;1.9806882891804904;-0.5;-37.2;-2.9;;;;;;
+342.087;4_zeroposition;sphere_detection;0.0;0.0;0.0;-0.3;0.1;0.1;;;;;;
+540.799;5_referenz_couch-90;sphere_detection;0.0;0.0;89.99752413963853;-1.4;2.1;0.0;;;;;;
+668.348;6_minVerschub_couch-90;sphere_detection;-10.0;20.0;90.98786828422878;-19.2;2.1;-0.8;;;;;;
+697.238;7_zeroposition_couch-90;sphere_detection;0.0;0.0;89.99752413963853;-1.5;2.0;0.0;;;;;;
+822.699;8_MaxVerschub_couch-90;sphere_detection;-30.0;50.0;91.97821242881902;-38.6;1.9;-3.7;;;;;;
+860.384;9_zeroposition_couch-90;sphere_detection;0.0;0.0;89.99752413963853;-1.5;2.0;0.0;;;;;;

@@ -9,12 +9,6 @@
       "type": "checkpoint",
       "msg": "Ist die Couch Rotation auf 0° und Heating Pads auf 32°C?"
     },
-    {
-      "type": "heat",
-      "a": 32.0,
-      "b": 32.0,
-      "wait_steady": true
-    },
 
     {
       "type": "logging",

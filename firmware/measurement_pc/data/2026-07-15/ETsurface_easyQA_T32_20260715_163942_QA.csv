@@ -1,0 +1,6 @@
+Time_Sec;Point_ID;Mode;H_pos;V_pos;R_pos;Sphere_X;Sphere_Y;Sphere_Z;Surf_X;Surf_Y;Surf_Z;Pitch;Yaw;Roll
+47.018;0_Referenz;sphere_detection;0.0;0.0;0.0;-0.2;0.2;0.1;;;;;;
+231.456;1_minVerschub;sphere_detection;-10.0;20.0;0.9903441445902452;-0.5;-17.8;-0.5;;;;;;
+260.977;2_zeroposition;sphere_detection;0.0;0.0;0.0;-0.3;0.1;0.1;;;;;;
+473.453;3_MaxVerschub;sphere_detection;-30.0;50.0;1.9806882891804904;-0.4;-37.3;-2.9;;;;;;
+509.934;4_zeroposition;sphere_detection;0.0;0.0;0.0;-0.3;0.1;0.1;;;;;;
