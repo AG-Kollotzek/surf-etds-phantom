@@ -52,7 +52,7 @@ LIMITS = {
 # Formel: T_innen = (T_aussen * CALIB_M) + CALIB_B
 CALIB_M = 1.170
 CALIB_B = -3.500
-
+]
 def target_to_internal(target_outer):
     """Konvertiert die gewünschte GUI-Außentemperatur in die Arduino-Innentemperatur."""
     return (target_outer * CALIB_M) + CALIB_B
