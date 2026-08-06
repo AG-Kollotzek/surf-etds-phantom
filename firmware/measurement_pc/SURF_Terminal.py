@@ -1,6 +1,7 @@
 import sys
 import time
 import queue
+import re
 import threading
 import csv
 import os
@@ -15,7 +16,8 @@ from PySide6.QtWidgets import QFileDialog
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QFrame, QTextEdit, QPushButton, QGridLayout, QMessageBox, QDialog, QFormLayout, QDialogButtonBox
+    QLabel, QLineEdit, QFrame, QTextEdit, QPushButton, QGridLayout, QMessageBox, QDialog, QFormLayout, QDialogButtonBox,
+    QInputDialog
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -52,7 +54,7 @@ LIMITS = {
 # Formel: T_innen = (T_aussen * CALIB_M) + CALIB_B
 CALIB_M = 1.170
 CALIB_B = -3.500
-]
+
 def target_to_internal(target_outer):
     """Konvertiert die gewünschte GUI-Außentemperatur in die Arduino-Innentemperatur."""
     return (target_outer * CALIB_M) + CALIB_B
@@ -82,6 +84,255 @@ class HeatOrder:
     LOG_DATA = 10
     SET_A = 1
     SET_B = 2
+
+
+# ================= QA-SESSION: PARSER & DATEI-HELFER (NEU) =================
+# Diese Sektion ist rein additiv. Ohne ausgewaehlte Config-Datei laeuft das
+# Terminal exakt wie vorher ("alter Modus").
+
+# "1_endposition_d1" -> Auslenkung 1 (frueher minVerschub) / "_d2" -> 2 (maxVerschub)
+RE_ENDPOS = re.compile(r"endposition_d(\d+)", re.IGNORECASE)
+# "6_endposition_d1_couch-90" -> Couchwinkel -90
+RE_COUCH = re.compile(r"couch_?(-?\d+)", re.IGNORECASE)
+# Rueckwaerts-Kompatibilitaet zu den alten Blueprints (vor der Umbenennung)
+RE_LEGACY_DEFL = re.compile(r"(min|max)verschub", re.IGNORECASE)
+# "..._T32.json" -> Heatingpads 32
+RE_TEMP_IN_NAME = re.compile(r"_T(\d+)", re.IGNORECASE)
+
+
+def parse_deflection(point_id):
+    """Auslenkungs-Nummer aus der Point-ID. 1 = min, 2 = max. None = keine Endposition."""
+    pid = str(point_id or "")
+    m = RE_ENDPOS.search(pid)
+    if m:
+        return int(m.group(1))
+    m = RE_LEGACY_DEFL.search(pid)  # alte Blueprints weiterhin unterstuetzen
+    if m:
+        return 1 if m.group(1).lower() == "min" else 2
+    return None
+
+
+def parse_couch_angle(point_id):
+    """Couchwinkel aus der Point-ID ('..._couch-90' -> -90). Ohne Suffix -> 0."""
+    m = RE_COUCH.search(str(point_id or ""))
+    return int(m.group(1)) if m else 0
+
+
+def scan_blueprint_meta(data, blueprint_path=""):
+    """Ermittelt VOR dem Start die Config-Felder, die fuer den ganzen Blueprint gelten.
+
+    meas_couch_type: 'multi angle' sobald der Blueprint mehr als eine Couchrotation braucht.
+    heatingpads:     Prioritaet: explizites Feld im Blueprint > heat-Step > '_T32' im Dateinamen > 'OFF'.
+    Beides ist im Blueprint per Top-Level-Key ueberschreibbar.
+    """
+    seq = data.get("sequence", [])
+
+    angles = set()
+    for s in seq:
+        if s.get("type") == "qa_input":
+            pid = str(s.get("point_id", ""))
+            angles.add(int(s["couch_angle"]) if "couch_angle" in s else parse_couch_angle(pid))
+    couch_type = "multi angle" if len(angles) > 1 else "single angle"
+
+    pads = "OFF"
+    heats = [s for s in seq if s.get("type") == "heat"]
+    if heats:
+        val = float(heats[0].get("a", heats[0].get("b", 0.0)))
+        pads = f"{val:g}" if val > 0 else "OFF"
+    else:
+        m = RE_TEMP_IN_NAME.search(os.path.basename(str(blueprint_path)))
+        if m:
+            pads = m.group(1)
+
+    # Explizite Angaben im Blueprint haben immer Vorrang
+    if "meas_couch_type" in data:
+        couch_type = str(data["meas_couch_type"])
+    if "heatingpads" in data:
+        pads = str(data["heatingpads"])
+
+    return {"meas_couch_type": couch_type, "heatingpads": pads}
+
+
+class QAConfigFile:
+    """Haengt Eintraege an das Auswerte-Config-File an.
+
+    Die Struktur bleibt unveraendert:
+        {"1": {"Linac", "deflection", "meas_couch_type", "heatingpads",
+               "etds_timestamp", "surf_timestamp", "couch_angle"}, ...}
+    Es wird bei jedem Eintrag frisch gelesen und geschrieben, damit bei einem
+    Absturz mitten in der Messung die bereits erfassten Eintraege erhalten bleiben.
+    """
+    KEY_ORDER = ["Linac", "deflection", "meas_couch_type", "heatingpads",
+                 "etds_timestamp", "surf_timestamp", "couch_angle"]
+
+    def __init__(self, path):
+        self.path = path
+        self.written_keys = []
+
+    def _load(self):
+        if not os.path.exists(self.path):
+            return {}
+        with open(self.path, "r", encoding="utf-8") as f:
+            txt = f.read().strip()
+        return json.loads(txt) if txt else {}
+
+    def _save(self, cfg):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+
+    def append_entry(self, entry):
+        """Schreibt einen neuen Eintrag unter dem naechsten freien Zahlen-Key."""
+        cfg = self._load()
+        nums = [int(k) for k in cfg.keys() if str(k).isdigit()]
+        key = str(max(nums) + 1) if nums else "1"
+        cfg[key] = {k: entry[k] for k in self.KEY_ORDER}
+        self._save(cfg)
+        self.written_keys.append(key)
+        return key
+
+    def patch_surf_timestamp(self, surf_ts):
+        """Traegt den CSV-Zeitstempel in eigene Eintraege nach, die noch keinen haben.
+
+        Noetig falls ein Blueprint die Sphere Detection VOR dem logging-Start hat.
+        """
+        cfg = self._load()
+        changed = []
+        for k in self.written_keys:
+            if k in cfg and not cfg[k].get("surf_timestamp"):
+                cfg[k]["surf_timestamp"] = surf_ts
+                changed.append(k)
+        if changed:
+            self._save(cfg)
+        return changed
+
+
+class MeasurementLog:
+    """Messprotokoll eines Blueprint-Durchlaufs: schreibt log.json (maschinenlesbar)
+    und log.txt (Messprotokoll zum Ausdrucken) in den data/<Datum>/-Ordner.
+
+    Wird in BEIDEN Modi geschrieben und ist rein additiv: ein Fehler beim Schreiben
+    darf eine laufende Messung niemals stoppen.
+    """
+
+    def __init__(self, target_dir, base_name):
+        os.makedirs(target_dir, exist_ok=True)
+        self.path_json = os.path.join(target_dir, base_name + "_log.json")
+        self.path_txt = os.path.join(target_dir, base_name + "_log.txt")
+        now = datetime.now()
+        self.data = {
+            "datum": now.strftime("%Y-%m-%d"),
+            "start_messung": now.strftime("%H-%M"),
+            "ende_messung": None,
+            "modus": "alter Modus (ohne Config)",
+            "config_file": None,
+            "blueprint_file": None,
+            "blueprint_name": None,
+            "linac": None,
+            "personal": None,
+            "messzweck": None,
+            "meas_couch_type": None,
+            "heatingpads": None,
+            "csv_file": None,
+            "surf_timestamp": None,
+            "bedingungen": {},
+            "config_entries": [],
+            "events": [],
+        }
+
+    def set(self, **kwargs):
+        self.data.update(kwargs)
+        self.save()
+
+    def condition(self, key, value):
+        self.data["bedingungen"][key] = value
+        self.save()
+
+    def event(self, ev_type, **kwargs):
+        ev = {"zeit": datetime.now().strftime("%H:%M:%S"), "type": ev_type}
+        ev.update(kwargs)
+        self.data["events"].append(ev)
+        self.save()
+        return ev
+
+    def config_entry(self, key, entry):
+        self.data["config_entries"].append(dict(entry, config_key=key))
+        self.save()
+
+    def save(self):
+        try:
+            with open(self.path_json, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            with open(self.path_txt, "w", encoding="utf-8") as f:
+                f.write(self.render_txt())
+        except Exception as e:
+            print(f"[LOG] Protokoll konnte nicht geschrieben werden: {e}")
+
+    def render_txt(self):
+        d = self.data
+        L = []
+        L.append("=" * 70)
+        L.append(" MESSPROTOKOLL - ExacTrac Dynamic Surface")
+        L.append("=" * 70)
+        L.append(f"Datum der Messung : {d['datum']}")
+        L.append(f"gemessen          : LINAC {d['linac'] if d['linac'] else '-'}")
+        L.append(f"Messteam          : {d['personal'] or '-'}")
+        L.append(f"Messzweck         : {d['messzweck'] or '-'}")
+        L.append("")
+        L.append(f"Modus             : {d['modus']}")
+        L.append(f"Config-Datei      : {d['config_file'] or '- (nicht beschrieben)'}")
+        L.append(f"Blueprint         : {d['blueprint_file'] or '-'}")
+        L.append(f"Blueprint-Name    : {d['blueprint_name'] or '-'}")
+        L.append(f"Messart           : {d['meas_couch_type'] or '-'}")
+        L.append(f"Heatingpads       : {d['heatingpads'] or '-'}")
+        L.append("")
+        L.append(f"Start Messung     : {d['start_messung']}")
+        L.append(f"Ende Messung      : {d['ende_messung'] or '- (laeuft noch / abgebrochen)'}")
+        L.append(f"CSV Datei         : {d['csv_file'] or '-'}")
+        L.append(f"surf_timestamp    : {d['surf_timestamp'] or '-'}")
+
+        L.append("")
+        L.append("--- BEDINGUNGEN " + "-" * 54)
+        if d["bedingungen"]:
+            for k, v in d["bedingungen"].items():
+                L.append(f"  {k:<24}: {v}")
+        else:
+            L.append("  (keine)")
+
+        L.append("")
+        L.append("--- CONFIG-EINTRAEGE " + "-" * 49)
+        if d["config_entries"]:
+            for e in d["config_entries"]:
+                L.append(
+                    f"  [{e.get('config_key')}] deflection {e.get('deflection')} | "
+                    f"couch {e.get('couch_angle')}deg | {e.get('meas_couch_type')} | "
+                    f"pads {e.get('heatingpads')} | ETDS {e.get('etds_timestamp')} | "
+                    f"CSV {e.get('surf_timestamp')}"
+                )
+        else:
+            L.append("  (keine - alter Modus oder keine Endposition erreicht)")
+
+        L.append("")
+        L.append("--- ABLAUF " + "-" * 59)
+        for ev in d["events"]:
+            t = ev.get("zeit", "")
+            typ = str(ev.get("type", "")).upper()
+            if typ == "CHECKPOINT":
+                L.append(f"  {t}  CHECKPOINT   {ev.get('msg', '')} -> {'JA' if ev.get('antwort') else 'NEIN'}")
+            elif typ == "LOG_CHECKPOINT":
+                L.append(f"  {t}  NOTIZ        {ev.get('key')}: {ev.get('wert')}   ({ev.get('msg', '')})")
+            elif typ == "ETDS_TIMESTAMP":
+                L.append(f"  {t}  ETDS         {ev.get('point_id')} -> {ev.get('etds_timestamp')}"
+                         f" (Config-Key {ev.get('config_key')})")
+            elif typ == "QA_INPUT":
+                L.append(f"  {t}  SPHERE DET.  {ev.get('point_id')} [{ev.get('mode')}] {ev.get('werte', '')}")
+            elif typ == "LOGGING":
+                L.append(f"  {t}  LOGGING      {ev.get('action')} -> {ev.get('datei', '')}")
+            else:
+                L.append(f"  {t}  {typ:<12} {ev}")
+        L.append("")
+        return "\n".join(L)
 
 
 # ================= SHARED STATE =================
@@ -369,6 +620,10 @@ class InterpreterThread(QThread):
     request_qa_input = Signal(str, str, str)
     finished = Signal()
     log_ctrl = Signal(str, str)
+    # --- NEU (QA-Session) ---
+    request_etds_timestamp = Signal(str, int, int, str)   # point_id, deflection, couch_angle, msg
+    request_log_input = Signal(str, str, str, bool)       # key, mode, msg, abort_on_no
+    log_event = Signal(object)                            # dict -> Messprotokoll
 
     def __init__(self, sequence_data, axis_q, heat_q):
         super().__init__()
@@ -378,6 +633,8 @@ class InterpreterThread(QThread):
         self.wait_event = threading.Event()
         self.running = True
         self.proceed_flag = True  # NEU: Bestimmt, ob der Blueprint fortgesetzt wird
+        # NEU: nur True wenn eine Config-Datei gewaehlt wurde. False = exakt altes Verhalten.
+        self.qa_mode = False
 
     def stop(self):
         """Beendet die Schleife im Thread."""
@@ -401,6 +658,28 @@ class InterpreterThread(QThread):
                 mode = step.get("mode", "surface_tracking")
                 point_id = str(step.get("point_id", "Unknown"))
                 msg = step.get("msg", "Bitte QA-Werte eintragen.")
+
+                # --- NEU: ETDS-Timestamp ZWINGEND vor der Sphere Detection an einer Endposition ---
+                # Nur im QA-Modus. Auslenkung/Couchwinkel kommen aus der Point-ID
+                # ("1_endposition_d1", "6_endposition_d1_couch-90") oder aus expliziten Feldern.
+                if self.qa_mode:
+                    defl = step.get("deflection", parse_deflection(point_id))
+                    if defl is not None:
+                        couch = int(step.get("couch_angle", parse_couch_angle(point_id)))
+                        self.log_msg.emit(f"Warte auf ETDS-Timestamp fuer {point_id}...")
+
+                        self.proceed_flag = False
+                        self.wait_event.clear()
+                        self.request_etds_timestamp.emit(
+                            point_id, int(defl), couch,
+                            step.get("etds_msg", "Zeitstempel (HHMMSS) des ExacTrac Tracking Files eingeben.")
+                        )
+                        self.wait_event.wait()
+
+                        if not self.proceed_flag:
+                            self.log_msg.emit("!! Blueprint bei der ETDS-Timestamp-Eingabe abgebrochen !!")
+                            self.running = False
+                            break
 
                 self.log_msg.emit(f"Warte auf manuelle Eingabe ({mode})...")
 
@@ -428,6 +707,9 @@ class InterpreterThread(QThread):
                 self.wait_event.clear()
                 self.show_prompt.emit("Checkpoint", msg)
                 self.wait_event.wait()
+
+                # NEU: Antwort jedes normalen Checkpoints wandert ins Messprotokoll
+                self.log_event.emit({"type": "checkpoint", "msg": msg, "antwort": bool(self.proceed_flag)})
 
                 if not self.proceed_flag:
                     self.log_msg.emit("!! Blueprint durch Benutzer am Checkpoint abgebrochen !!")
@@ -525,6 +807,28 @@ class InterpreterThread(QThread):
                 self.log_ctrl.emit(action, prefix)
                 time.sleep(0.5)
 
+            # --- NEUER BEFEHL: LOG_CHECKPOINT ---
+            # Erfassender Checkpoint: schreibt eine Bedingung/Notiz ins Messprotokoll.
+            # Anders als "checkpoint" ist das KEIN Abbruch-Gate (ausser abort_on_no: true).
+            #   mode "yesno" -> Ja/Nein wird als True/False protokolliert (z.B. Raumlicht aus?)
+            #   mode "text"  -> Freitext-Notiz (z.B. Tracking-Qualitaet)
+            elif cmd_type == "log_checkpoint":
+                key = str(step.get("key", "notiz"))
+                msg = step.get("msg", "Bitte bestaetigen.")
+                lmode = str(step.get("mode", "yesno")).lower()
+                abort_on_no = bool(step.get("abort_on_no", False))
+
+                self.log_msg.emit(f"PROTOKOLL-EINTRAG: {msg}")
+                self.proceed_flag = False
+                self.wait_event.clear()
+                self.request_log_input.emit(key, lmode, msg, abort_on_no)
+                self.wait_event.wait()
+
+                if not self.proceed_flag:
+                    self.log_msg.emit(f"!! Blueprint abgebrochen (log_checkpoint '{key}') !!")
+                    self.running = False
+                    break
+
         self.log_msg.emit(">>> BLUEPRINT BEENDET/GESTOPPT <<<")
         self.finished.emit()
 
@@ -579,6 +883,109 @@ class QAInputDialog(QDialog):
                 data[key] = ""  # Bei leerer/falscher Eingabe
         return data
 
+
+class SessionInfoDialog(QDialog):
+    """Sammelt zu Beginn einer Messung die zentralen Infos in EINEM Formular.
+
+    Linac / Personal / Messzweck werden abgefragt, Messart und Heatingpads sind
+    aus dem Blueprint vorbelegt und koennen korrigiert werden (sie landen so im
+    Config-File wie sie hier stehen).
+    """
+
+    def __init__(self, blueprint_file, blueprint_name, config_path, meta, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Messung starten - Zentrale Messungsinfos")
+        self.setMinimumWidth(480)
+
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(
+            f"<b>Blueprint:</b> {os.path.basename(blueprint_file)}<br>"
+            f"<span style='color:#555'>{blueprint_name}</span><br>"
+            f"<b>Config-Datei:</b> {os.path.basename(config_path)}"
+        ))
+        lay.addWidget(QLabel("<i>Diese Angaben werden ins Messprotokoll und in das Config-File geschrieben.</i>"))
+
+        form = QFormLayout()
+        self.in_linac = QLineEdit()
+        self.in_linac.setPlaceholderText("z.B. 0 oder 1")
+        self.in_personal = QLineEdit()
+        self.in_personal.setPlaceholderText("z.B. QMP1, Student1")
+        self.in_zweck = QLineEdit("QA")
+        self.in_pads = QLineEdit(str(meta.get("heatingpads", "OFF")))
+        self.in_couch = QLineEdit(str(meta.get("meas_couch_type", "single angle")))
+
+        form.addRow("Linac:", self.in_linac)
+        form.addRow("Personal:", self.in_personal)
+        form.addRow("Messzweck:", self.in_zweck)
+        form.addRow("Heatingpads (autom.):", self.in_pads)
+        form.addRow("Messart (autom.):", self.in_couch)
+        lay.addLayout(form)
+
+        self.btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.btns.accepted.connect(self.try_accept)
+        self.btns.rejected.connect(self.reject)
+        lay.addWidget(self.btns)
+
+    def try_accept(self):
+        if not self.in_linac.text().strip() or not self.in_personal.text().strip():
+            QMessageBox.warning(self, "Eingabe fehlt", "Linac und Personal muessen ausgefuellt sein.")
+            return
+        self.accept()
+
+    def get_data(self):
+        return {
+            "linac": self.in_linac.text().strip(),
+            "personal": self.in_personal.text().strip(),
+            "messzweck": self.in_zweck.text().strip() or "QA",
+            "heatingpads": self.in_pads.text().strip() or "OFF",
+            "meas_couch_type": self.in_couch.text().strip() or "single angle",
+        }
+
+
+class EtdsTimestampDialog(QDialog):
+    """Fragt den Zeitstempel des ExacTrac-Tracking-Files ab (HHMMSS)."""
+
+    def __init__(self, point_id, deflection, couch_angle, msg, surf_timestamp, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"ExacTrac Datensatz - {point_id}")
+        self.setMinimumWidth(420)
+        self.value = ""
+
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(f"<b>{msg}</b>"))
+        lay.addWidget(QLabel(
+            f"Punkt: <b>{point_id}</b><br>"
+            f"Auslenkung (deflection): <b>{deflection}</b> "
+            f"({'min' if deflection == 1 else 'max' if deflection == 2 else '?'})<br>"
+            f"Couchwinkel: <b>{couch_angle}&deg;</b><br>"
+            f"Zugehoerige Phantom-CSV: <b>{surf_timestamp or '- noch kein Logging gestartet -'}</b>"
+        ))
+
+        form = QFormLayout()
+        self.in_ts = QLineEdit()
+        self.in_ts.setPlaceholderText("HHMMSS  (z.B. 162919)")
+        form.addRow("ETDS Datensatz:", self.in_ts)
+        lay.addLayout(form)
+
+        self.btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.btns.accepted.connect(self.try_accept)
+        self.btns.rejected.connect(self.reject)
+        lay.addWidget(self.btns)
+
+    def try_accept(self):
+        # Tolerant: "16:29:19" / "16.29.19" werden zu "162919"
+        digits = re.sub(r"\D", "", self.in_ts.text())
+        if len(digits) != 6:
+            QMessageBox.warning(self, "Ungueltig",
+                                "Bitte genau 6 Ziffern im Format HHMMSS eingeben (z.B. 162919).")
+            return
+        self.value = digits
+        self.accept()
+
+    def get_timestamp(self):
+        return self.value
+
+
 # ================= GUI =================
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -612,6 +1019,12 @@ class MainWindow(QMainWindow):
         self.timer.start(100)
 
         self.qa_csv_filepath = None  # Speichert den Pfad zur QA-Datei
+
+        # --- NEU: QA-Session (nur aktiv wenn eine Config-Datei gewaehlt wurde) ---
+        self.qa_config = None       # QAConfigFile oder None (= alter Modus)
+        self.meas_log = None        # MeasurementLog des aktuellen Blueprints
+        self.session = {}           # Linac / Personal / Messzweck / Messart / Heatingpads
+        self.surf_timestamp = None  # HHMMSS der laufenden Phantom-CSV
 
     def setup_ui(self):
         cw = QWidget()
@@ -888,23 +1301,173 @@ class MainWindow(QMainWindow):
 
     def load_blueprint(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Blueprint laden", "", "JSON Files (*.json)")
-        if file_name:
+        if not file_name:
+            return
+
+        try:
+            with open(file_name, 'r') as f:
+                data = json.load(f)
+        except Exception as e:
+            self.log(f"Fehler beim Laden der JSON: {e}")
+            return
+
+        # === NEU: WEICHE QA-MODUS <-> ALTER MODUS ==========================
+        # Config-Datei waehlen -> QA-Modus. Abbrechen -> alter Modus, es wird
+        # KEINE Config beschrieben (Sphere Detections laufen trotzdem normal).
+        self.qa_config = None
+        self.meas_log = None
+        self.session = {}
+        self.surf_timestamp = None
+
+        meta = scan_blueprint_meta(data, file_name)
+        cfg_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Config-Datei fuer die Auswertung waehlen  (ABBRECHEN = alter Modus ohne Config)",
+            "", "JSON Files (*.json)"
+        )
+
+        if cfg_path:
+            dlg = SessionInfoDialog(file_name, data.get("name", ""), cfg_path, meta, self)
+            if dlg.exec() != QDialog.Accepted:
+                self.log("!! Blueprint-Start abgebrochen (Messungsinfos nicht bestaetigt).")
+                return
+            self.session = dlg.get_data()
+            self.qa_config = QAConfigFile(cfg_path)
+            self.log(f">> QA-MODUS: Config-Datei '{os.path.basename(cfg_path)}' wird erweitert.")
+            self.log(f">> Linac {self.session['linac']} | {self.session['personal']} | "
+                     f"{self.session['meas_couch_type']} | Pads {self.session['heatingpads']}")
+        else:
+            self.session = dict(meta)
+            self.log(">> ALTER MODUS: Es wird KEINE Config-Datei beschrieben.")
+
+        # --- Messprotokoll anlegen (in BEIDEN Modi, rein additiv) ---
+        try:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            base = f"{os.path.splitext(os.path.basename(file_name))[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            self.meas_log = MeasurementLog(os.path.join("data", date_str), base)
+            self.meas_log.set(
+                modus="QA (Config wird beschrieben)" if self.qa_config else "alter Modus (ohne Config)",
+                config_file=os.path.basename(cfg_path) if cfg_path else None,
+                blueprint_file=os.path.basename(file_name),
+                blueprint_name=data.get("name"),
+                linac=self.session.get("linac"),
+                personal=self.session.get("personal"),
+                messzweck=self.session.get("messzweck"),
+                meas_couch_type=self.session.get("meas_couch_type"),
+                heatingpads=self.session.get("heatingpads"),
+            )
+            self.log(f">> Messprotokoll: {self.meas_log.path_txt}")
+        except Exception as e:
+            self.meas_log = None
+            self.log(f"!! Messprotokoll konnte nicht angelegt werden: {e}")
+        # ===================================================================
+
+        try:
+            self.interpreter = InterpreterThread(data, self.axis_q, self.heat_q)
+            self.interpreter.qa_mode = self.qa_config is not None
+            self.interpreter.log_msg.connect(self.log)
+            self.interpreter.show_prompt.connect(self.handle_prompt)
+            self.interpreter.log_ctrl.connect(self.handle_blueprint_logging)
+            self.interpreter.request_qa_input.connect(self.handle_qa_input)
+            # --- NEU ---
+            self.interpreter.request_etds_timestamp.connect(self.handle_etds_timestamp)
+            self.interpreter.request_log_input.connect(self.handle_log_input)
+            self.interpreter.log_event.connect(self.handle_log_event)
+
+            self.btn_load_json.setEnabled(False)
+            self.interpreter.finished.connect(self.on_blueprint_finished)
+            self.interpreter.start()
+
+        except Exception as e:
+            self.log(f"Fehler beim Starten des Blueprints: {e}")
+            self.btn_load_json.setEnabled(True)
+
+    # ================= NEU: HANDLER DER QA-SESSION =================
+    def on_blueprint_finished(self):
+        """Ersetzt das frühere Lambda: Button freigeben + Protokoll abschliessen."""
+        self.btn_load_json.setEnabled(True)
+        if self.meas_log:
             try:
-                with open(file_name, 'r') as f:
-                    data = json.load(f)
-
-                self.interpreter = InterpreterThread(data, self.axis_q, self.heat_q)
-                self.interpreter.log_msg.connect(self.log)
-                self.interpreter.show_prompt.connect(self.handle_prompt)
-                self.interpreter.log_ctrl.connect(self.handle_blueprint_logging)
-                self.interpreter.request_qa_input.connect(self.handle_qa_input)
-
-                self.btn_load_json.setEnabled(False)
-                self.interpreter.finished.connect(lambda: self.btn_load_json.setEnabled(True))
-                self.interpreter.start()
-
+                self.meas_log.set(ende_messung=datetime.now().strftime("%H-%M"))
+                self.log(f">> Messprotokoll gespeichert: {self.meas_log.path_txt}")
             except Exception as e:
-                self.log(f"Fehler beim Laden der JSON: {e}")
+                self.log(f"!! Protokoll-Abschluss fehlgeschlagen: {e}")
+
+    def handle_log_event(self, ev):
+        """Nimmt Ereignisse des Interpreters (z.B. Checkpoint-Antworten) ins Protokoll auf."""
+        if not self.meas_log:
+            return
+        try:
+            ev = dict(ev)
+            self.meas_log.event(ev.pop("type", "event"), **ev)
+        except Exception as e:
+            self.log(f"!! Protokoll-Eintrag fehlgeschlagen: {e}")
+
+    def handle_log_input(self, key, mode, msg, abort_on_no):
+        """log_checkpoint: erfasst eine Bedingung (Ja/Nein) oder eine Freitext-Notiz."""
+        proceed = True
+        value = None
+        try:
+            if mode == "text":
+                text, ok = QInputDialog.getText(self, "Notiz fuer das Messprotokoll", msg)
+                value = text.strip() if ok else None
+                # Abbrechen heisst hier nur "keine Notiz" - die Messung laeuft weiter.
+            else:
+                reply = QMessageBox.question(self, "Protokoll-Eintrag", msg,
+                                             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                value = (reply == QMessageBox.Yes)
+                if abort_on_no and not value:
+                    proceed = False
+
+            if self.meas_log and value is not None:
+                self.meas_log.condition(key, value)
+                self.meas_log.event("log_checkpoint", key=key, wert=value, msg=msg)
+            self.log(f">> Protokoll: {key} = {value}")
+        except Exception as e:
+            self.log(f"!! Fehler beim Protokoll-Eintrag: {e}")
+
+        self.interpreter.confirm_prompt(proceed)
+
+    def handle_etds_timestamp(self, point_id, deflection, couch_angle, msg):
+        """Fragt den ExacTrac-Zeitstempel ab und haengt einen Eintrag ans Config-File."""
+        dlg = EtdsTimestampDialog(point_id, deflection, couch_angle, msg, self.surf_timestamp, self)
+        if dlg.exec() != QDialog.Accepted:
+            self.log("!! ETDS-Timestamp-Eingabe abgebrochen.")
+            self.interpreter.confirm_prompt(False)
+            return
+
+        ts = dlg.get_timestamp()
+        entry = {
+            "Linac": str(self.session.get("linac", "")),
+            "deflection": int(deflection),
+            "meas_couch_type": str(self.session.get("meas_couch_type", "single angle")),
+            "heatingpads": str(self.session.get("heatingpads", "OFF")),
+            "etds_timestamp": ts,
+            "surf_timestamp": self.surf_timestamp or "",
+            "couch_angle": int(couch_angle),
+        }
+
+        key = None
+        try:
+            key = self.qa_config.append_entry(entry)
+            self.log(f">> Config-Eintrag [{key}]: deflection {deflection}, couch {couch_angle} deg, "
+                     f"ETDS {ts}, CSV {entry['surf_timestamp'] or '(fehlt noch)'}")
+            if not self.surf_timestamp:
+                self.log("!! WARNUNG: Logging laeuft noch nicht - surf_timestamp wird nachgetragen.")
+        except Exception as e:
+            # Eine teure Messung darf an einem Datei-Fehler nicht scheitern.
+            self.log(f"!! FEHLER beim Schreiben der Config: {e} (Messung laeuft weiter!)")
+
+        if self.meas_log:
+            try:
+                if key:
+                    self.meas_log.config_entry(key, entry)
+                self.meas_log.event("etds_timestamp", point_id=point_id, deflection=int(deflection),
+                                    couch_angle=int(couch_angle), etds_timestamp=ts, config_key=key)
+            except Exception:
+                pass
+
+        self.interpreter.confirm_prompt(True)
 
     def handle_prompt(self, title, msg):
         # Zeigt einen Dialog mit Yes und No Button
@@ -947,7 +1510,21 @@ class MainWindow(QMainWindow):
             self.btn_stop.setEnabled(True)
             self.log(f"LOGGING VIA BLUEPRINT GESTARTET: {fname}")
 
+            # --- NEU: CSV-Zeitstempel merken (= surf_timestamp der Auswertung) ---
+            self.surf_timestamp = self.current_m_timestamp.split('_')[-1]
+            self.log(f">> surf_timestamp der Messung: {self.surf_timestamp}")
+            if self.meas_log:
+                self.meas_log.set(csv_file=fname, surf_timestamp=self.surf_timestamp)
+                self.meas_log.event("logging", action="start", datei=fname)
+            if self.qa_config:
+                # Falls Eintraege schon vor dem Logging-Start entstanden sind
+                patched = self.qa_config.patch_surf_timestamp(self.surf_timestamp)
+                if patched:
+                    self.log(f">> surf_timestamp in Config-Eintraege {patched} nachgetragen.")
+
         elif action == "stop":
+            if self.meas_log:
+                self.meas_log.event("logging", action="stop", datei=self.qa_csv_filepath or "")
             # Wir rufen einfach die obige stop-Logik auf, die speichert dann auch den Plot
             self.handle_logging("stop")
 
@@ -977,9 +1554,21 @@ class MainWindow(QMainWindow):
                         data.get('pitch', ''), data.get('yaw', ''), data.get('roll', '')
                     ])
 
+            # NEU: Sphere Detection zusaetzlich im Messprotokoll vermerken
+            if self.meas_log:
+                try:
+                    self.meas_log.event("qa_input", point_id=point_id, mode=mode, werte=data)
+                except Exception:
+                    pass
+
             # 2. Dem Interpreter sagen, dass es weitergehen kann
             self.interpreter.confirm_prompt(True)
         else:
+            if self.meas_log:
+                try:
+                    self.meas_log.event("qa_input", point_id=point_id, mode=mode, werte="ABGEBROCHEN")
+                except Exception:
+                    pass
             # Bei Abbruch den Blueprint stoppen
             self.interpreter.confirm_prompt(False)
 
