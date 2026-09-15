@@ -1,0 +1,67 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  data-and-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Every tracked JSON file parses
+        # Guards against the truncated-config failure mode: the previous
+        # run/ExacTrac linkage table was committed mid-write and was not
+        # valid JSON, and the writing code swallowed the error.
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          bad = []
+          for p in pathlib.Path('.').rglob('*.json'):
+              if '.git' in p.parts: continue
+              try: json.loads(p.read_text(encoding='utf-8'))
+              except Exception as e: bad.append((p, e))
+          for p, e in bad: print(f"::error file={p}::invalid JSON: {e}")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Blueprints validate against the schema
+        run: |
+          pip install -q jsonschema
+          python - <<'PY'
+          import json, pathlib, sys
+          from jsonschema import Draft202012Validator
+          schema = json.loads(pathlib.Path('blueprints/schema/blueprint.schema.json').read_text())
+          v = Draft202012Validator(schema)
+          fail = 0
+          for p in sorted(pathlib.Path('blueprints').rglob('*.json')):
+              if 'schema' in p.parts: continue
+              errs = sorted(v.iter_errors(json.loads(p.read_text(encoding='utf-8'))), key=lambda e: e.path)
+              for e in errs:
+                  print(f"::error file={p}::{list(e.path)}: {e.message}"); fail = 1
+          sys.exit(fail)
+          PY
+
+      - name: No operator names in measurement protocols
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          bad = []
+          for p in sorted(pathlib.Path('data').rglob('*_log.json')):
+              v = json.loads(p.read_text(encoding='utf-8')).get('personal')
+              if v and not all(part.strip().startswith('Operator') for part in v.split(',')):
+                  bad.append(p)
+          for p in bad:
+              print(f"::error file={p}::'personal' is not pseudonymised (expected 'Operator X')")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: CITATION.cff is valid
+        run: |
+          pip install -q cffconvert
+          cffconvert --validate

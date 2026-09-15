@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tim-buck/SURF_ETD_QA/main/blueprints/schema/blueprint.schema.json",
+  "title": "SURF Test Unit measurement blueprint",
+  "description": "Schema for the JSON measurement-sequence DSL executed by InterpreterThread.run in software/surf_terminal/terminal.py. Numeric bounds mirror the firmware axis limits in firmware/axis/SURF_nanoAxis_v5/SURF_nanoAxis_v5.ino. See docs/blueprint-format.md; deviations from the interpreter's own tolerance are listed there under 'Schema strictness'.",
+
+  "type": "object",
+  "required": ["name", "sequence"],
+  "additionalProperties": false,
+
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable title. Echoed to the console at start and stored as blueprint_name in the measurement log."
+    },
+    "heatingpads": {
+      "$ref": "#/$defs/heatingpads"
+    },
+    "meas_couch_type": {
+      "$ref": "#/$defs/measCouchType"
+    },
+    "sequence": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Steps, executed strictly in order.",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+
+  "$defs": {
+
+    "heatingpads": {
+      "type": "string",
+      "pattern": "^(OFF|[0-9]+(\\.[0-9]+)?)$",
+      "description": "Overrides the heating-pad annotation written into the evaluation config file. Either the literal 'OFF' or a setpoint in degrees Celsius as a string (e.g. '32'). Without this key the value is derived from the first heat step, then from a '_T<n>' suffix in the file name, then defaults to 'OFF' (terminal.py:137-146)."
+    },
+
+    "measCouchType": {
+      "type": "string",
+      "enum": ["single angle", "multi angle"],
+      "description": "Overrides the couch-rotation annotation written into the evaluation config file. Without this key it is derived from the number of distinct couch angles across all qa_input steps (terminal.py:130-135)."
+    },
+
+    "axisPositionH": {
+      "type": "number",
+      "minimum": -45,
+      "maximum": 25,
+      "description": "Absolute target of the horizontal slide in mm. Bounds are the firmware limits LIMIT_H_MIN/LIMIT_H_MAX (SURF_nanoAxis_v5.ino:55-56). The PC does NOT range-check blueprint moves; an out-of-range target is silently discarded by the firmware and still acknowledged as done."
+    },
+
+    "axisPositionV": {
+      "type": "number",
+      "minimum": -35,
+      "maximum": 50,
+      "description": "Absolute target of the vertical slide in mm. Bounds are LIMIT_V_MIN/LIMIT_V_MAX (SURF_nanoAxis_v5.ino:61-62)."
+    },
+
+    "axisPositionR": {
+      "type": "number",
+      "minimum": -30,
+      "maximum": 120,
+      "description": "Absolute target of the rotation stage in degrees. Bounds are LIMIT_R_MIN/LIMIT_R_MAX (SURF_nanoAxis_v5.ino:67-68). A move is rejected outright until the R axis has been zeroed (SURF_nanoAxis_v5.ino:152)."
+    },
+
+    "step": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "move",
+            "delay",
+            "heat",
+            "checkpoint",
+            "log_checkpoint",
+            "logging",
+            "qa_input"
+          ],
+          "description": "Step discriminator. A type outside this list is silently ignored by the interpreter, which is why the schema restricts it."
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "move" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/moveStep" } },
+        { "if": { "properties": { "type": { "const": "delay" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/delayStep" } },
+        { "if": { "properties": { "type": { "const": "heat" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/heatStep" } },
+        { "if": { "properties": { "type": { "const": "checkpoint" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/checkpointStep" } },
+        { "if": { "properties": { "type": { "const": "log_checkpoint" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/logCheckpointStep" } },
+        { "if": { "properties": { "type": { "const": "logging" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/loggingStep" } },
+        { "if": { "properties": { "type": { "const": "qa_input" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/qaInputStep" } }
+      ]
+    },
+
+    "moveStep": {
+      "type": "object",
+      "description": "One blocking absolute move. Axes present in the step are driven SEQUENTIALLY in the fixed order H, V, R (terminal.py:724) regardless of JSON key order; they never move simultaneously.",
+      "required": ["type", "speed"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "move" },
+        "H": { "$ref": "#/$defs/axisPositionH" },
+        "V": { "$ref": "#/$defs/axisPositionV" },
+        "R": { "$ref": "#/$defs/axisPositionR" },
+        "speed": {
+          "type": "number",
+          "minimum": 0.062,
+          "description": "Feed rate applied to every axis of this step: mm/s for H and V, deg/s for R. A speed that encodes to 0 steps/s makes the firmware's move loop spin forever (SURF_nanoAxis_v5.ino:368) and must never be used. The terminal truncates int(speed * steps_per_unit) (terminal.py:739), so any R speed below 1/16.156 = 0.0619 deg/s already encodes to 0; hence minimum 0.062 rather than exclusiveMinimum 0."
+        }
+      },
+      "anyOf": [
+        { "required": ["H"] },
+        { "required": ["V"] },
+        { "required": ["R"] }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [ { "required": ["H"] }, { "required": ["V"] } ]
+          },
+          "then": {
+            "properties": {
+              "speed": {
+                "maximum": 50,
+                "description": "Linear-axis cap MAX_SPEED_MM_S = 50 mm/s (SURF_nanoAxis_v5.ino:42). Higher values are clamped by the firmware, so the commanded and the executed profile would differ."
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "speed": {
+                "maximum": 90,
+                "description": "Rotation cap MAX_SPEED_DEG_S = 90 deg/s (SURF_nanoAxis_v5.ino:43)."
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "delayStep": {
+      "type": "object",
+      "description": "Interruptible wait. Resolution is 0.1 s and the elapsed time is accumulated in 0.1 s increments, so the realised delay is slightly longer than requested (terminal.py:798-801).",
+      "required": ["type", "time"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "delay" },
+        "time": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wait duration in seconds."
+        }
+      }
+    },
+
+    "heatStep": {
+      "type": "object",
+      "description": "Sets one or both heating-pad setpoints. Values are surface (outer) temperatures; the terminal converts them to the pad-internal setpoint before sending (terminal.py:597-598).",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "heat" },
+        "a": { "$ref": "#/$defs/padSetpoint" },
+        "b": { "$ref": "#/$defs/padSetpoint" },
+        "wait_steady": {
+          "type": "boolean",
+          "description": "Block until every pad named in this step is flagged stable, or for 120 s, whichever comes first (terminal.py:756-790). On timeout the operator is prompted and may abort. Default false."
+        }
+      },
+      "anyOf": [
+        { "required": ["a"] },
+        { "required": ["b"] }
+      ]
+    },
+
+    "padSetpoint": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 50,
+      "description": "Heating-pad surface setpoint in degrees Celsius. The upper bound matches the manual-entry band the GUI enforces (terminal.py:1139, 1258); blueprint heat steps bypass that check, so the bound is imposed here instead. The firmware additionally clamps the internal setpoint to 0-65 C (SURF_nanoHeating_v4.ino:143)."
+    },
+
+    "checkpointStep": {
+      "type": "object",
+      "description": "Blocking Yes/No gate. 'No' aborts the blueprint. The answer is recorded in the measurement log (terminal.py:702-719).",
+      "required": ["type", "msg"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "checkpoint" },
+        "msg": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Prompt text shown to the operator."
+        }
+      }
+    },
+
+    "logCheckpointStep": {
+      "type": "object",
+      "description": "Recording checkpoint: writes an operator answer into the measurement log without gating the run, unless abort_on_no is set (terminal.py:815-830, 1406-1429).",
+      "required": ["type", "key", "msg"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "log_checkpoint" },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_]+$",
+          "description": "Identifier under which the answer is stored in the 'bedingungen' map of the measurement log. Restricted to word characters so entries stay machine-readable."
+        },
+        "mode": {
+          "enum": ["yesno", "text"],
+          "description": "'yesno' records a boolean, 'text' records a free-text note. Any other value is treated as 'yesno'. Default 'yesno'."
+        },
+        "msg": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Prompt text shown to the operator."
+        },
+        "abort_on_no": {
+          "type": "boolean",
+          "description": "Only meaningful with mode 'yesno': answering No aborts the blueprint. Default false. Cancelling a 'text' dialog never aborts."
+        }
+      },
+      "if": { "properties": { "mode": { "const": "text" } }, "required": ["mode"] },
+      "then": {
+        "properties": {
+          "abort_on_no": {
+            "const": false,
+            "description": "abort_on_no has no effect in text mode; the interpreter always proceeds (terminal.py:1411-1414)."
+          }
+        }
+      }
+    },
+
+    "loggingStep": {
+      "type": "object",
+      "description": "Starts or stops the phantom telemetry CSV and, on start, the QA CSV (terminal.py:804-808, 1482-1529).",
+      "required": ["type", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "logging" },
+        "action": {
+          "enum": ["start", "stop"],
+          "description": "'start' opens data/<YYYY-MM-DD>/<prefix>_<timestamp>.csv plus <prefix>_<timestamp>_QA.csv; 'stop' closes them and saves the temperature plot. Any other value is a no-op."
+        },
+        "prefix": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "description": "File-name stem of the measurement CSVs. No path separators. Default 'messung'. Make it unique per blueprint - the output file name is the only in-file record of which sequence produced the data."
+        }
+      },
+      "if": { "properties": { "action": { "const": "start" } }, "required": ["action"] },
+      "then": { "required": ["prefix"] },
+      "else": { "not": { "required": ["prefix"] } }
+    },
+
+    "qaInputStep": {
+      "type": "object",
+      "description": "Blocking operator measurement entry. In QA mode a point_id matching 'endposition_d<n>' (or the legacy '<min|max>verschub') additionally forces an ExacTrac timestamp dialog and appends an entry to the evaluation config file (terminal.py:657-699).",
+      "required": ["type", "mode", "point_id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "qa_input" },
+        "mode": {
+          "enum": ["sphere_detection", "surface_tracking", "both"],
+          "description": "'sphere_detection' collects X/Y/Z only; 'surface_tracking' and 'both' additionally collect pitch/yaw/roll (terminal.py:855-857). Only 'surface_tracking' fills the Surf_X/Y/Z columns of the QA CSV (terminal.py:1550-1553)."
+        },
+        "point_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Measurement-point label, written verbatim to the QA CSV. It is also the metadata carrier: 'endposition_d<n>' sets the deflection index, 'couch<angle>' or 'couch_<angle>' sets the couch angle (0 if absent). A point_id matching neither 'endposition_d<n>' nor '<min|max>verschub' produces no ExacTrac prompt and no config entry."
+        },
+        "msg": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Instruction shown above the input fields."
+        },
+        "deflection": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Explicit deflection index, overriding the value parsed from point_id (terminal.py:666). Setting it forces the ExacTrac prompt even for a point_id that carries no deflection marker."
+        },
+        "couch_angle": {
+          "type": "integer",
+          "minimum": -360,
+          "maximum": 360,
+          "description": "Explicit couch angle in degrees, overriding the value parsed from point_id (terminal.py:668). Also counted when deriving meas_couch_type (terminal.py:134)."
+        },
+        "etds_msg": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Custom prompt for the ExacTrac timestamp dialog (terminal.py:675)."
+        }
+      }
+    }
+  }
+}

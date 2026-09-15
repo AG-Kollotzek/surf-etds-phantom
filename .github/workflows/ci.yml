@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Byte-compile all sources
+        run: python -m compileall -q software/
+      - name: Verify every import resolves
+        # The terminal needs a display for Qt; importing under xvfb is enough
+        # to catch a missing or misnamed dependency, which is what this guards.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libegl1 libxkbcommon-x11-0 libxcb-cursor0
+          xvfb-run -a python -c "import surf_terminal.terminal" 
+        working-directory: software
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check software/

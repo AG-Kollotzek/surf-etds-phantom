@@ -1,0 +1,37 @@
+name: arduino-build
+
+on:
+  push:
+    branches: [main]
+    paths: ["firmware/**"]
+  pull_request:
+    paths: ["firmware/**"]
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sketch:
+          - firmware/axis/SURF_nanoAxis_v5
+          - firmware/heating/SURF_nanoHeating_v4
+          - firmware/tools/rotation_calibration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/compile-sketches@v1
+        with:
+          # The CPU/bootloader option is not recorded; see docs/toolchain.md.
+          # Compilation output does not depend on it, only uploading does.
+          fqbn: arduino:avr:nano
+          platforms: |
+            - name: arduino:avr
+              version: 1.8.7
+          sketch-paths: ${{ matrix.sketch }}
+          libraries: |
+            - name: AccelStepper
+              version: 1.64
+            - name: OneWire
+              version: 2.3.8
+            - name: DallasTemperature
+              version: 4.0.6
