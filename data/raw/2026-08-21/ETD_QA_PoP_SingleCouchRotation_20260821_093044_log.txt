@@ -1,0 +1,33 @@
+======================================================================
+ MESSPROTOKOLL - ExacTrac Dynamic Surface
+======================================================================
+Datum der Messung : 2026-08-21
+gemessen          : LINAC X
+Messteam          : Student2
+Messzweck         : Test
+
+Modus             : QA (Config wird beschrieben)
+Config-Datei      : ETD_QA_BasicPoP.json
+Blueprint         : ETD_QA_PoP_SingleCouchRotation.json
+Blueprint-Name    : ETD QA Basic Proof of Principle
+Messart           : single angle
+Heatingpads       : OFF
+
+Start Messung     : 09-30
+Ende Messung      : 09-31
+CSV Datei         : ETD_QA_PoP_SingleCouchOrientation_20260821_093058.csv
+surf_timestamp    : 093058
+
+--- BEDINGUNGEN ------------------------------------------------------
+  (keine)
+
+--- CONFIG-EINTRAEGE -------------------------------------------------
+  (keine - alter Modus oder keine Endposition erreicht)
+
+--- ABLAUF -----------------------------------------------------------
+  09:30:58  CHECKPOINT   Sind alle Achsen gehomed und das Phantom korrekt montiert, und auf Nullposition gefahren? Hinweis: Diese Messung soll OHNE eingeschaltete Heizpads (RT) durchgeführt werden! -> JA
+  09:30:58  LOGGING      start -> ETD_QA_PoP_SingleCouchOrientation_20260821_093058.csv
+  09:31:01  CHECKPOINT   Ist die Couch Rotation richtig eingestellt? -> JA
+  09:31:07  CHECKPOINT   Sphere Detection XRAY Image Aufnehmen! (Baseline bei 0° Couch) -> JA
+  09:31:51  CHECKPOINT   Messung des Bewegungsprofil beenden? -> JA
+  09:31:51  LOGGING      stop -> data/2026-08-21/ETD_QA_PoP_SingleCouchOrientation_20260821_093058_QA.csv

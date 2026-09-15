@@ -1,0 +1,26 @@
+{
+  "datum": "2026-08-06",
+  "start_messung": "16-27",
+  "ende_messung": "16-27",
+  "modus": "alter Modus (ohne Config)",
+  "config_file": null,
+  "blueprint_file": "ETsurface_easyQA_new.json",
+  "blueprint_name": "Erste einfache QA Sequenz für ET Surface System der Tirol Kliniken",
+  "linac": null,
+  "personal": null,
+  "messzweck": null,
+  "meas_couch_type": "single angle",
+  "heatingpads": "OFF",
+  "csv_file": null,
+  "surf_timestamp": null,
+  "bedingungen": {},
+  "config_entries": [],
+  "events": [
+    {
+      "zeit": "16:27:57",
+      "type": "checkpoint",
+      "msg": "Sind alle Achsen gehomed und das Phantom korrekt montiert?",
+      "antwort": false
+    }
+  ]
+}

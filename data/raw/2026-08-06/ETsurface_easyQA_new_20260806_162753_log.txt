@@ -1,0 +1,28 @@
+======================================================================
+ MESSPROTOKOLL - ExacTrac Dynamic Surface
+======================================================================
+Datum der Messung : 2026-08-06
+gemessen          : LINAC -
+Messteam          : -
+Messzweck         : -
+
+Modus             : alter Modus (ohne Config)
+Config-Datei      : - (nicht beschrieben)
+Blueprint         : ETsurface_easyQA_new.json
+Blueprint-Name    : Erste einfache QA Sequenz für ET Surface System der Tirol Kliniken
+Messart           : single angle
+Heatingpads       : OFF
+
+Start Messung     : 16-27
+Ende Messung      : 16-27
+CSV Datei         : -
+surf_timestamp    : -
+
+--- BEDINGUNGEN ------------------------------------------------------
+  (keine)
+
+--- CONFIG-EINTRAEGE -------------------------------------------------
+  (keine - alter Modus oder keine Endposition erreicht)
+
+--- ABLAUF -----------------------------------------------------------
+  16:27:57  CHECKPOINT   Sind alle Achsen gehomed und das Phantom korrekt montiert? -> NEIN

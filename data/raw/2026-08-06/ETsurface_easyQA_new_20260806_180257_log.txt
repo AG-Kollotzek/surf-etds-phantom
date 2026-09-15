@@ -1,0 +1,44 @@
+======================================================================
+ MESSPROTOKOLL - ExacTrac Dynamic Surface
+======================================================================
+Datum der Messung : 2026-08-06
+gemessen          : LINAC 4
+Messteam          : Student1, Student2, QMP1
+Messzweck         : QA_2026
+
+Modus             : QA (Config wird beschrieben)
+Config-Datei      : etds_qa_2026_config_copy.json
+Blueprint         : ETsurface_easyQA_new.json
+Blueprint-Name    : Erste einfache QA Sequenz für ET Surface System der Tirol Kliniken
+Messart           : single angle
+Heatingpads       : OFF
+
+Start Messung     : 18-02
+Ende Messung      : 18-11
+CSV Datei         : ETsurface_easyQA_20260806_180321.csv
+surf_timestamp    : 180321
+
+--- BEDINGUNGEN ------------------------------------------------------
+  raumlicht_aus           : True
+  tracking_qualitaet      : gut
+
+--- CONFIG-EINTRAEGE -------------------------------------------------
+  (keine - alter Modus oder keine Endposition erreicht)
+
+--- ABLAUF -----------------------------------------------------------
+  18:03:05  CHECKPOINT   Sind alle Achsen gehomed und das Phantom korrekt montiert? -> JA
+  18:03:14  CHECKPOINT   Ist die Couch Rotation auf 0° und Heating Pads auf RT? - Logging wird nach dem ersten XRAY gestartet. -> JA
+  18:03:21  NOTIZ        raumlicht_aus: True   (Raumlicht im Behandlungsraum aus? (Lichtsettings müssen bei JEDER Messung gleich sein!))
+  18:03:21  LOGGING      start -> ETsurface_easyQA_20260806_180321.csv
+  18:03:54  SPHERE DET.  0_Referenz [sphere_detection] {'x': -1.1, 'y': -0.6, 'z': -0.3}
+  18:05:53  CHECKPOINT   Surface Tracking aktivieren. -> JA
+  18:07:04  ETDS         1_endposition_d1 -> 180626 (Config-Key None)
+  18:07:48  SPHERE DET.  1_endposition_d1 [sphere_detection] {'x': -0.9, 'y': -18.4, 'z': -1.0}
+  18:08:26  SPHERE DET.  2_zeroposition [sphere_detection] {'x': -1.1, 'y': -0.5, 'z': -0.3}
+  18:08:55  CHECKPOINT   Surface Tracking wieder aktiv? -> JA
+  18:09:59  ETDS         3_endposition_d2 -> 180934 (Config-Key None)
+  18:10:35  SPHERE DET.  3_endposition_d2 [sphere_detection] {'x': -0.8, 'y': -37.7, 'z': -3.6}
+  18:11:15  SPHERE DET.  4_zeroposition [sphere_detection] {'x': -1.1, 'y': -0.5, 'z': -0.3}
+  18:11:19  NOTIZ        tracking_qualitaet: gut   (Tracking-Qualität / Auffälligkeiten (optional, Freitext):)
+  18:11:19  LOGGING      stop -> data\2026-08-06\ETsurface_easyQA_20260806_180321_QA.csv
+  18:11:22  CHECKPOINT   Messung wurde beendet. -> JA

@@ -1,20 +1,34 @@
-# OS
+# --- OS ---
 .DS_Store
 Thumbs.db
 
-# Logs/Temp
+# --- Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- IDE ---
+.idea/
+.vscode/
+
+# --- Logs / temp ---
 *.log
 *.tmp
 
-# Arduino / Build
+# --- Arduino / PlatformIO build output ---
 build/
 *.hex
 *.elf
 *.bin
 .pio/
-.vscode/.browse.VC.db
 
-# MATLAB
+# --- MATLAB ---
 *.asv
 *.mex*
 *.autosave
@@ -23,5 +37,8 @@ slprj/
 sccprj/
 *.mltbx
 matlab_crash_dump.*
-*.mat
 .matlab/
+*.mat
+
+# --- Derived measurement output (regenerable from the raw CSV) ---
+data/**/plot_*.png

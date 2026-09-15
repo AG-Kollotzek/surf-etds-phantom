@@ -1,0 +1,182 @@
+{
+  "1": {
+    "Linac": "1",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "161959",
+    "surf_timestamp": "161730",
+    "couch_angle": 0
+  },
+  "2": {
+    "Linac": "1",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "162341",
+    "surf_timestamp": "161730",
+    "couch_angle": 0
+  },
+  "3": {
+    "Linac": "1",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "164209",
+    "surf_timestamp": "163942",
+    "couch_angle": 0
+  },
+  "4": {
+    "Linac": "1",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "164610",
+    "surf_timestamp": "163942",
+    "couch_angle": 0
+  },
+  "5": {
+    "Linac": "1",
+    "deflection": 1,
+    "meas_couch_type": "multi angle",
+    "heatingpads": "32",
+    "etds_timestamp": "165301",
+    "surf_timestamp": "165141",
+    "couch_angle": 0
+  },
+  "6": {
+    "Linac": "1",
+    "deflection": 2,
+    "meas_couch_type": "multi angle",
+    "heatingpads": "32",
+    "etds_timestamp": "165554",
+    "surf_timestamp": "165141",
+    "couch_angle": 0
+  },
+  "7": {
+    "Linac": "1",
+    "deflection": 1,
+    "meas_couch_type": "multi angle",
+    "heatingpads": "32",
+    "etds_timestamp": "170146",
+    "surf_timestamp": "165141",
+    "couch_angle": -90
+  },
+  "8": {
+    "Linac": "1",
+    "deflection": 2,
+    "meas_couch_type": "multi angle",
+    "heatingpads": "32",
+    "etds_timestamp": "170444",
+    "surf_timestamp": "165141",
+    "couch_angle": -90
+  },
+  "9": {
+    "Linac": "0",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "162919",
+    "surf_timestamp": "162730",
+    "couch_angle": 0
+  },
+  "10": {
+    "Linac": "0",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "163152",
+    "surf_timestamp": "162730",
+    "couch_angle": 0
+  },
+  "11": {
+    "Linac": "0",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "164653",
+    "surf_timestamp": "164238",
+    "couch_angle": 0
+  },
+  "12": {
+    "Linac": "0",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "165005",
+    "surf_timestamp": "164238",
+    "couch_angle": 0
+  },
+  "13": {
+    "Linac": "3",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "164356",
+    "surf_timestamp": "163851",
+    "couch_angle": 0
+  },
+  "14": {
+    "Linac": "3",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "164743",
+    "surf_timestamp": "163851",
+    "couch_angle": 0
+  },
+  "15": {
+    "Linac": "3",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "170015",
+    "surf_timestamp": "165555",
+    "couch_angle": 0
+  },
+  "16": {
+    "Linac": "3",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "170312",
+    "surf_timestamp": "165555",
+    "couch_angle": 0
+  },
+  "17": {
+    "Linac": "4",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "173610",
+    "surf_timestamp": "173403",
+    "couch_angle": 0
+  },
+  "18": {
+    "Linac": "4",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "32",
+    "etds_timestamp": "173911",
+    "surf_timestamp": "173403",
+    "couch_angle": 0
+  },
+  "19": {
+    "Linac": "4",
+    "deflection": 1,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "180626",
+    "surf_timestamp": "180321",
+    "couch_angle": 0
+  },
+  "20": {
+    "Linac": "4",
+    "deflection": 2,
+    "meas_couch_type": "single angle",
+    "heatingpads": "OFF",
+    "etds_timestamp": "180934",
+    "surf_timestamp": "180321",
+    "couch_angle": 0
+  }
+}

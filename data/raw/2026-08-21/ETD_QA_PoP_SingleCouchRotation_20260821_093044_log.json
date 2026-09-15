@@ -1,0 +1,56 @@
+{
+  "datum": "2026-08-21",
+  "start_messung": "09-30",
+  "ende_messung": "09-31",
+  "modus": "QA (Config wird beschrieben)",
+  "config_file": "ETD_QA_BasicPoP.json",
+  "blueprint_file": "ETD_QA_PoP_SingleCouchRotation.json",
+  "blueprint_name": "ETD QA Basic Proof of Principle",
+  "linac": "X",
+  "personal": "Student2",
+  "messzweck": "Test",
+  "meas_couch_type": "single angle",
+  "heatingpads": "OFF",
+  "csv_file": "ETD_QA_PoP_SingleCouchOrientation_20260821_093058.csv",
+  "surf_timestamp": "093058",
+  "bedingungen": {},
+  "config_entries": [],
+  "events": [
+    {
+      "zeit": "09:30:58",
+      "type": "checkpoint",
+      "msg": "Sind alle Achsen gehomed und das Phantom korrekt montiert, und auf Nullposition gefahren? Hinweis: Diese Messung soll OHNE eingeschaltete Heizpads (RT) durchgeführt werden!",
+      "antwort": true
+    },
+    {
+      "zeit": "09:30:58",
+      "type": "logging",
+      "action": "start",
+      "datei": "ETD_QA_PoP_SingleCouchOrientation_20260821_093058.csv"
+    },
+    {
+      "zeit": "09:31:01",
+      "type": "checkpoint",
+      "msg": "Ist die Couch Rotation richtig eingestellt?",
+      "antwort": true
+    },
+    {
+      "zeit": "09:31:07",
+      "type": "checkpoint",
+      "msg": "Sphere Detection XRAY Image Aufnehmen! (Baseline bei 0° Couch)",
+      "antwort": true
+    },
+    {
+      "zeit": "09:31:51",
+      "type": "checkpoint",
+      "msg": "Messung des Bewegungsprofil beenden?",
+      "antwort": true
+    },
+    {
+      "zeit": "09:31:51",
+      "type": "logging",
+      "action": "stop",
+      "datei": "data/2026-08-21/ETD_QA_PoP_SingleCouchOrientation_20260821_093058_QA.csv"
+    }
+  ]
+}
