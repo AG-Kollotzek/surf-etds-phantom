@@ -5,13 +5,9 @@ type: software
 authors:
   - given-names: Tim
     family-names: Buck
-    # TODO before release: add orcid and confirm affiliation
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
     affiliation: "Medical University of Innsbruck"
-  # TODO before release: confirm co-author list and consent (see CONTRIBUTORS.md).
-  # Contributors to the published history include S. Kollotzek (measurement data,
-  # 2026-03-10 campaign) and A. M. Schneider (early control scripts).
-repository-code: "https://github.com/tim-buck/SURF_ETD_QA"
+  # Further contributors to the history are listed in CONTRIBUTORS.md.
+repository-code: "https://github.com/tim-buck/surf-etds-phantom"
 abstract: >-
   Firmware, measurement software, hardware documentation and ground-truth
   measurement data for the SURF Test Unit: a three-degree-of-freedom motion
@@ -32,7 +28,7 @@ keywords:
 # software; firmware/ is GPL-3.0-or-later and data/ and docs/ are CC-BY-4.0,
 # as set out under license-url.
 license: MIT
-license-url: "https://github.com/tim-buck/SURF_ETD_QA/blob/main/README.md#licensing"
+license-url: "https://github.com/tim-buck/surf-etds-phantom/blob/main/README.md#licensing"
 version: "1.0.0"
 date-released: "2026-09-15"
 references:
@@ -41,7 +37,7 @@ references:
     authors:
       - given-names: Tim
         family-names: Buck
-    repository-code: "https://github.com/tim-buck/SURF_DataAnalysis"
+    repository-code: "https://github.com/tim-buck/surf-etds-analysis"
     notes: >-
       Companion repository. Holds the evaluation chain and the ExacTrac-side
       tracking exports. Neither repository alone contains a complete measurement.

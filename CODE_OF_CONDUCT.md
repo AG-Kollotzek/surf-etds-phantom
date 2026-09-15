@@ -8,10 +8,8 @@ acceptable in issues, pull requests or any other project space.
 
 ## Reporting
 
-Report unacceptable behaviour to the project maintainers.
-
-> **TODO before release:** replace this with a real contact address. Use a
-> group or role address (e.g. a departmental mailbox), not a personal one.
+Report unacceptable behaviour to the project maintainers through the
+repository on GitHub.
 
 Reports will be handled confidentially. Maintainers who do not act in good
 faith on a report may face consequences determined by the project's

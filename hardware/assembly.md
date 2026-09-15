@@ -6,11 +6,9 @@
 > pinout, enclosure, suppliers and safety, and every one of them contained only
 > a `.gitkeep` file (`git ls-tree -r 270cdf5 -- hardware`).
 
-This document is therefore a **skeleton**. It fills in everything that the
-firmware, the terminal, the calibration files and the lab notebook actually
-establish. Everything else is marked **TODO**, stating the evidence needed to
-close it. Read [`../docs/safety.md`](../docs/safety.md) before building or
-powering anything.
+This document therefore records only what the firmware, the terminal, the
+calibration files and the lab notebook actually establish. Read
+[`../docs/safety.md`](../docs/safety.md) before building or powering anything.
 
 **Citations:**
 
@@ -39,33 +37,21 @@ Pins are in [`pinout.md`](pinout.md); parts in [`bom.csv`](bom.csv).
   "Example: larger range at the top" / "Example: must not go down deep"
   (`axis:61-62`), and `h all` homes V first to "drive V up, to avoid
   collisions" (`terminal.py:1238`), with homing moving in the positive
-  direction (`axis:83`). Confirm on the rig.
+  direction (`axis:83`).
 - **V is not a pure vertical translation.** A removed design discussion states
   that the V slide produces a coupled Z shift and pitch/yaw motion
   (`270cdf5:docs/PoPargumentation&blueprints.txt:9`). The geometry that causes
   this is not documented.
 
-**TODO:**
-
-- **Kinematic chain.** Which axis carries which, and where the phantom mounts.
-  Needed: photo or drawing of the assembled rig.
-- **Positive directions of H and R**, relative to the rig and to the room.
-  Needed: a labelled photo, plus a check with a small move (§8, step 10).
-- **V geometry.** Slide angle or mechanism, and the resulting Z/pitch/yaw per mm
-  of V travel. Needed: a dimensioned drawing, or a measurement of the forward
-  kinematics.
+The kinematic chain and the positive directions of H and R are not documented
+in this repository.
 
 ## 2. Frame
 
-**TODO**, nothing is documented. A rebuild needs:
-
-- materials and cross-sections;
-- overall dimensions, with a dimensioned drawing or CAD export (STEP);
-- where each axis is mounted;
-- how the rig is secured to the treatment couch, which it rides on during couch
-  rotations (`blueprints/qa/ETsurface_easyQA_wcouch_T32_new.json:125`);
-- total mass and centre of mass;
-- guarding of pinch points (none is documented; [`../docs/safety.md`](../docs/safety.md) §6.1).
+Neither the frame nor how the rig is secured to the treatment couch is
+documented in this repository. The rig rides on the couch during couch
+rotations (`blueprints/qa/ETsurface_easyQA_wcouch_T32_new.json:125`). No
+guarding of pinch points is documented ([`../docs/safety.md`](../docs/safety.md) §6.1).
 
 ## 3. Linear axes (H and V): slides, screws and couplings
 
@@ -99,8 +85,7 @@ On top of that it needs:
   10 mm/s × 30 ms = 0.3 mm in the fast search and 0.06 mm in the fine approach,
   plus mechanical overrun. The switch must tolerate this without damage.
 - **A margin beyond the negative limit.** There is no switch there
-  ([`../docs/safety.md`](../docs/safety.md) G3). TODO: decide on a hard stop or
-  a second switch.
+  ([`../docs/safety.md`](../docs/safety.md) G3).
 
 The positive software limits stop 8 mm (H) and 12 mm (V) short of the switch
 trigger point (derived: 33 − 25 and 62 − 50).
@@ -141,24 +126,13 @@ Read the evidence accurately:
 - The H conclusion rests on the single in-range run after re-homing
   (0.3 mm out, return to 0).
 
-**TODO:**
+**V backlash has never been measured**; the notebook has no V entries.
 
-- **V backlash has never been measured**; the notebook has no V entries.
-- **H backlash needs repeating.** Repeat with several in-range runs in both
-  approach directions and record every gauge re-zeroing.
+### 3.4 Slides, screws, couplings and endstops
 
-### 3.4 TODO for the linear axes
-
-- **Slides.** Guide type, stroke, carriage, and how the V load is supported.
-- **Screws.** Type (trapezoidal or ball), diameter, length, nut, preload, end
-  bearings. The 4 mm lead is recorded only in a superseded sketch; measure it.
-- **Couplings.** Motor-to-screw coupling type. A closed-loop driver corrects the
-  motor shaft; coupling wind-up, screw backlash and nut play lie outside that
-  loop.
-- **Endstops.** Switch model, mounting and adjustment. Record how the switch
-  position is fixed: moving it moves the working zero (§7.2).
-- **Gravity.** Whether V back-drives when unpowered. This is needed for the
-  emergency-stop design ([`../docs/safety.md`](../docs/safety.md) §8).
+The slides, screws, motor-to-screw couplings and endstop switches are not
+documented in this repository. A closed-loop driver corrects the motor shaft;
+coupling wind-up, screw backlash and nut play lie outside that loop.
 
 ## 4. Rotation stage (R): 1:2 bevel gear
 
@@ -199,14 +173,8 @@ nominal 1:2 ratio (`GEAR_RATIO_R = 2.0`, superseded sketch; "bevel gearbox 1:2",
 not reproduce the calibrated value. The actual tooth counts and microstep
 setting are not recorded. 360 × 16.156 = 5 816 steps per output revolution.
 
-**TODO:**
-
-- Count the gear teeth and read each driver's microstep setting, then explain
-  the 9 % gap.
-- Re-measure steps/° with a documented method and uncertainty, over several
-  revolutions, using the calibration sketch. **That sketch has no software
-  limits** (`calib:30-70`), so remove the phantom and free all cables first.
-- Decide whether 16.156 or 16.1599 is correct and propagate the result.
+**The calibration sketch has no software limits** (`calib:30-70`), so remove
+the phantom and free all cables before running it.
 
 ### 4.2 Backlash: rotation axis (lab notebook, 09.03.26 and 10.03.26)
 
@@ -260,15 +228,6 @@ of 0.01 mm) and `calib:12` both give **0.06 mm**; 6 mm at 15 mm would be about
 - **No endstop and no physical homing.** `HOME_AXIS` and `SET_ZERO` only zero
   the counter wherever R stands (`axis:392-396`, `:420-423`).
 
-**TODO:**
-
-- **Physical zero reference for R.** Define one (a scribed mark, a dowel, or
-  preferably a reference switch) and the procedure for zeroing to it. Needed:
-  a photo of the mark and a repeatability measurement.
-- **Stage details.** Gear type (bought or printed), module, tooth counts,
-  material, output bearing, how the phantom mounts, any mechanical hard stops,
-  and whether cables limit rotation.
-
 ## 5. Driver wiring and current setting
 
 **Established** (details in [`pinout.md`](pinout.md)):
@@ -285,23 +244,11 @@ of 0.01 mm) and `calib:12` both give **0.06 mm**; 6 mm at 15 mm would be about
   default of 1 µs applies (`AccelStepper.cpp:202`, AccelStepper 1.64), plus
   `digitalWrite` overhead.
 
-**TODO**, all needed before a rebuild can be commissioned:
-
-- **Driver identity.** Manufacturer and hardware revision; the model
-  designation alone does not identify them.
-- **Microstep setting for each driver.** Record the DIP-switch positions. It
-  must give 800 steps/mm on H and V together with the screw lead (§3.1), and it
-  enters the steps/° of R (§4.1).
-- **Current setting for each driver**, and the motor's rated current.
-- **Closed-loop settings and encoder wiring.**
-- **Signal wiring.** How PUL, DIR and ENA are wired to the opto inputs (to 5 V or
-  to GND), which fixes whether ENA LOW really means "enabled"; and how the ALM
-  output is wired and what polarity it has.
-- **Signal timing.** Verify the step pulse width and the DIR set-up time with an
-  oscilloscope against the driver's input timing specification.
-- **Supply.** The supply voltage is **not determinable from the repository**
-  ([`../docs/safety.md`](../docs/safety.md) §6.3). Also record supply current,
-  fusing and wire gauges.
+The drivers' manufacturer and hardware revision (the model designation alone
+does not identify them), their microstep, current and closed-loop settings, and
+the signal, encoder and supply wiring are not documented in this repository.
+The supply voltage is **not determinable from the repository**
+([`../docs/safety.md`](../docs/safety.md) §6.3).
 
 ## 6. Temperature sensors and heating pads
 
@@ -324,16 +271,11 @@ of 0.01 mm) and `calib:12` both give **0.06 mm**; 6 mm at 15 mm would be about
 - **The bus needs an external pull-up.** The OneWire library sets the data pin
   to plain `INPUT` ([`pinout.md`](pinout.md), pitfall 4).
 
-**TODO:**
-
-- **Sensor position.** Exact position and depth of each sensor relative to the
-  pad and the phantom surface, and the thermal coupling (paste, adhesive,
-  clamp). Needed: a sectional sketch or photo.
-- **Which physical pad is A and which is B** (front or rear). The calibration
-  was done on the front pad only ([`README.md`](README.md#thermal-calibration-provenance)).
-- **Wiring.** Cable routing, strain relief and pull-up resistor value.
-- **Fault response.** Verify that a detached sensor is noticed. The firmware
-  cannot notice it ([`../docs/safety.md`](../docs/safety.md) G8).
+The position and thermal coupling of each sensor, and which physical pad
+(front or rear) is A and which is B, are not documented in this repository. The
+calibration was done on the front pad only
+([`README.md`](README.md#thermal-calibration-provenance)). The firmware cannot
+notice a detached sensor ([`../docs/safety.md`](../docs/safety.md) G8).
 
 ### 6.2 Heating-pad mounting
 
@@ -350,16 +292,9 @@ of 0.01 mm) and `calib:12` both give **0.06 mm**; 6 mm at 15 mm would be about
 | Cutout | sensor reading > 65 °C | `heat:24`, `:61` |
 | Setpoint in use | 32 °C surface (33.94 °C at the sensor) in 8 blueprint heat steps | `blueprints/`; conversion `terminal.py:58-60` |
 
-**TODO:**
-
-- **Pads.** Type, size, voltage, power and maximum rated temperature.
-- **Mounting.** Position on the phantom, adhesive or fixation, surface finish
-  (the pads form part of the tracked surface), electrical connection and strain
-  relief.
-- **MOSFET stage.** Part, heat-sinking, gate resistor, and a gate pull-down
-  ([`pinout.md`](pinout.md), pitfall 6).
-- **Independent over-temperature cutout** on each pad, in series with its
-  supply (recommended in [`../docs/safety.md`](../docs/safety.md) §8).
+The pads, their mounting on the phantom and the MOSFET stage, including any gate
+pull-down ([`pinout.md`](pinout.md), pitfall 6), are not documented in this
+repository. The pads form part of the tracked surface.
 
 ## 7. Homing and setting the working zero
 
@@ -390,8 +325,7 @@ positive (`HOMING_SIGN_H = HOMING_SIGN_V = +1`, `axis:82-83`).
   (`terminal.py:1228-1245`).
 - **The result is not reported.** Success and failure both return
   `COMMAND_DONE` (`axis:384-401`). Watch each homing physically.
-- **Homing repeatability has not been measured.** TODO: home 10× with a dial
-  gauge on the carriage at the working zero, and record the spread.
+- **Homing repeatability has not been measured.**
 
 ### 7.2 Working-zero convention
 
@@ -415,15 +349,10 @@ positive (`HOMING_SIGN_H = HOMING_SIGN_V = +1`, `axis:82-83`).
 - **Do not use `set h zero` or `set v zero` on a homed axis.** Either one moves
   the software-limit window ([`../docs/safety.md`](../docs/safety.md) G3).
 
-**TODO:**
-
-- **What the working zero means physically.** State where the phantom should be
-  at H = V = R = 0: relative to the rig, the couch and the room isocentre or
-  lasers. Record the procedure that was used to choose 33.0 and 62.0 mm.
-- **How to re-derive the offsets on a rebuilt rig.** The blueprints assume the
-  phantom is "correctly mounted and moved to zero position"
-  (`blueprints/heating-off/ETD_QA_PoP_SingleCouchRotation.json:6`), but that
-  position is defined nowhere.
+The blueprints assume the phantom is "correctly mounted and moved to zero
+position" (`blueprints/heating-off/ETD_QA_PoP_SingleCouchRotation.json:6`), but
+that position is defined nowhere. The procedure used to choose 33.0 and 62.0 mm
+is not recorded.
 
 ## 8. First power-on checks
 
@@ -435,54 +364,47 @@ emergency stop ([`../docs/safety.md`](../docs/safety.md) G1).
    `SURF_nanoHeating_v4` to the heating board, with **driver and heater
    supplies off**. Label both boards and both USB cables. The sketches are not
    interchangeable ([`pinout.md`](pinout.md#cross-flashing-and-swapped-ports)).
-2. **Trace D11** on the heating board and record its function
-   ([`pinout.md`](pinout.md), pitfall 5).
-3. **Heater gates in reset** (heater supply off, gate measured): hold the
+2. **Heater gates in reset** (heater supply off, gate measured): hold the
    heating Nano in reset and check that D5 and D6 do not rise. Release reset:
    they must be LOW after `setup()` ([`pinout.md`](pinout.md), pitfall 6).
-4. **Sensors.** Start the terminal and check that both pad temperatures read
+3. **Sensors.** Start the terminal and check that both pad temperatures read
    near room temperature. Unplug one sensor: its readout must drop to about
    −105.6 °C (−127 °C converted, `terminal.py:62-64`) and its pad must stay off
    (`heat:61`).
-5. **Port assignment.** Before any axis command, confirm that the pad readout
+4. **Port assignment.** Before any axis command, confirm that the pad readout
    is not ≈2.99 °C (swapped ports) and that no simulation message appeared
    ([`../docs/safety.md`](../docs/safety.md) G6, G7).
-6. **Endstop polarity.** With both slides away from their switches, the axis
+5. **Endstop polarity.** With both slides away from their switches, the axis
    Nano's LED D13 must be dark. Press each switch by hand: D13 must light. If
    it is lit at rest, the wiring is normally open or broken. **Do not home**
    ([`pinout.md`](pinout.md), pitfall 1).
-7. **Alarm inputs.** Confirm from the CL57T documentation how an alarm can be
+6. **Alarm inputs.** Confirm from the CL57T documentation how an alarm can be
    provoked safely, then verify that each H and V alarm pulls A0 or A1 LOW. The
    terminal does not show alarm bits, so observe the pin directly. An
    unconnected ALM wire reads "no alarm" ([`pinout.md`](pinout.md), pitfall 2).
-8. **Enable polarity.** With the driver supply on, compare holding torque while
+7. **Enable polarity.** With the driver supply on, compare holding torque while
    the axis Nano is held in reset (pins floating) with torque after start-up
    (ENA LOW). Record which state enables the drivers
    ([`pinout.md`](pinout.md), pitfall 3).
-9. **Record the driver data** in this document and in [`bom.csv`](bom.csv):
-   supply voltage, driver current and microstep settings.
-10. **Direction check, before any homing**, with each slide near mid-travel.
-    Moves are accepted before homing, around the power-on position
-    ([`../docs/safety.md`](../docs/safety.md) G3). Send `m h 1 1` and
-    `m v 1 1`, and confirm the directions against §1. For R, first
-    `set r zero`, then `m r 5 2`.
-11. **Homing direction.** The fast search must move *towards* the switch. If
-    an axis moves away from it, **remove driver power immediately**: the search
-    otherwise continues for up to 20 s at 10 mm/s, up to 200 mm at the
-    commanded speed (`axis:74`, `:78`). Correct it either with the DIR
-    inversion (`setPinsInverted`, `axis:259-261`, which also flips the
-    coordinate sign) or with `HOMING_SIGN_H` / `HOMING_SIGN_V` (`axis:82-83`),
-    to suit the coordinate convention you want.
-12. **Home each axis individually** (`h v`, then `h h`) with hands clear.
+8. **Direction check, before any homing**, with each slide near mid-travel.
+   Moves are accepted before homing, around the power-on position
+   ([`../docs/safety.md`](../docs/safety.md) G3). Send `m h 1 1` and
+   `m v 1 1`, and confirm the directions against §1. For R, first
+   `set r zero`, then `m r 5 2`.
+9. **Homing direction.** The fast search must move *towards* the switch. If
+   an axis moves away from it, **remove driver power immediately**: the search
+   otherwise continues for up to 20 s at 10 mm/s, up to 200 mm at the
+   commanded speed (`axis:74`, `:78`). Correct it either with the DIR
+   inversion (`setPinsInverted`, `axis:259-261`, which also flips the
+   coordinate sign) or with `HOMING_SIGN_H` / `HOMING_SIGN_V` (`axis:82-83`),
+   to suit the coordinate convention you want.
+10. **Home each axis individually** (`h v`, then `h h`) with hands clear.
     Observe the fast approach, the two slow touches and the travel to zero.
     Then check that the free travel of §3.2 exists by jogging, slowly, to the
     software limits.
-13. **Calibrate.** Repeat the backlash measurements (§3.3, §4.2), including V,
-    and the steps/° measurement (§4.1), and record the results with dates in
-    `docs/calibration/`.
-14. **Heating.** Set one pad with `t a 32` and measure its surface with a
+11. **Calibrate.** Repeat the backlash measurements (§3.3, §4.2), including V,
+    and the steps/° measurement (§4.1).
+12. **Heating.** Set one pad with `t a 32` and measure its surface with a
     reference thermometer. Compare with the model in
     [`README.md`](README.md#thermal-calibration-provenance), and repeat for the
     other pad; it has never been calibrated.
-15. **Emergency stop**, once fitted: test it during a move at the highest speed
-    you will use ([`../docs/safety.md`](../docs/safety.md) §8).

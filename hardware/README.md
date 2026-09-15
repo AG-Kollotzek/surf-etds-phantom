@@ -31,8 +31,8 @@ the terminal, the calibration files and a lab notebook.
 | File | What it is |
 |---|---|
 | [`pinout.md`](pinout.md) | Pin assignment of both Nanos (the only pinout record), with the comment/code contradictions found in the firmware |
-| [`bom.csv`](bom.csv) | Bill of materials. **Every supplier, part-number and price cell is empty**; the cost evidence for the paper still has to be filled in from purchase records |
-| [`assembly.md`](assembly.md) | Build and commissioning skeleton: established facts, marked TODOs, homing sequence, working-zero convention, backlash data, first power-on checks |
+| [`bom.csv`](bom.csv) | Bill of materials. **Every supplier, part-number and price cell is empty** |
+| [`assembly.md`](assembly.md) | Assembly and commissioning: established facts, homing sequence, working-zero convention, backlash data, first power-on checks |
 | [`calibration/heating-pad-calibration.csv`](calibration/heating-pad-calibration.csv) | Raw thermal calibration, 12 points. `;`-separated, German decimal commas, CRLF line endings in the working copy |
 | [`calibration/heating-pad-calibration.xlsx`](calibration/heating-pad-calibration.xlsx) | The same 12 rows as a spreadsheet. It contains no fit: its drawing part is empty |
 | [`calibration/heating-pad-calibration.png`](calibration/heating-pad-calibration.png) | Plot of internal (DS18B20), external (Testo 925) and setpoint temperature against setpoint, with the internal-minus-external gradient. No regression line |
@@ -149,15 +149,3 @@ data.**
   `terminal.py:353` claims. The band is tighter than the model's own error
   (surface RMS 0.60 °C), so "STABIL" means the sensor is steady. It does not
   mean the surface is within 0.2 °C of the requested temperature.
-
-### TODO before relying on the thermal model
-
-- [ ] Identify which firmware pad (A or B) is the front pad.
-- [ ] Calibrate the other pad.
-- [ ] Repeat the calibration on separate days to establish reproducibility.
-- [ ] Record the settle criterion, probe type and placement, ambient
-  temperature, and the reference thermometer's calibration certificate.
-- [ ] Add points between 30 and 36 °C.
-- [ ] Consider per-pad constants, and a non-linear model if the residual
-  structure persists.
-- [ ] Commit the fitting script and its output next to the data.

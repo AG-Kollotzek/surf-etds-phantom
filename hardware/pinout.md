@@ -2,9 +2,7 @@
 
 This is the only pinout record for the SURF Test Unit. It was **reconstructed
 from the firmware source**, not from the physical wiring: no schematic, wiring
-diagram, terminal plan or photograph exists in the repository. Before relying on
-any row, confirm it on the rig with a continuity tester, and record any
-deviation here.
+diagram, terminal plan or photograph exists in the repository.
 
 Sources:
 
@@ -142,9 +140,8 @@ and its configured polarity are not documented in the repository. A superseded
 sketch comments "CL57T ALM is LOW on fault"
 (`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:210`),
 and an earlier one carries only an "ALM level (autodetect)" placeholder
-(`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:101-103`). Verify
-the polarity against the driver manual and by measurement before relying on
-it. The R driver has no ALM input at all (also noted as "R has no
+(`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:101-103`). The R
+driver has no ALM input at all (also noted as "R has no
 endstop/alarm" at `270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:19`).
 The firmware reports both alarm bits in its status byte (`axis:166-172`), but
 the terminal reads that byte and discards it (`_stat`, `terminal.py:473`).
@@ -157,30 +154,28 @@ Drivers" (`axis:256-257`), and nothing ever writes them again. Neither
 driver. A superseded sketch uses the same convention,
 `ENABLE_ACTIVE_LEVEL = LOW` (`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:79`).
 Whether LOW actually means "enabled" depends on how the CL57T ENA input is
-wired, and that is not documented: **TODO**, verify. From power-up or reset
-until `setup()` runs, all these pins are high-impedance. How the drivers behave
-with floating PUL/DIR/ENA inputs has not been checked: **TODO**.
+wired, and that is not documented. From power-up or reset until `setup()` runs,
+all these pins are high-impedance. How the drivers behave with floating
+PUL/DIR/ENA inputs has not been checked.
 
 ### 4. OneWire buses need an external pull-up that is not documented
 
 The OneWire library sets the data pin to plain `INPUT` (OneWire 2.3.8,
 `OneWire.cpp:164`), so each bus needs an external pull-up resistor to work. Its
-value and location are not recorded: **TODO**, measure on the rig.
+value and location are not recorded.
 
 ### 5. Heating pin D11 is driven HIGH with no explanation
 
 `pinMode(11,OUTPUT); digitalWrite(11,HIGH);` (`heat:103`) has no comment, and
 the same two lines appear, also uncommented, in the superseded heating sketches
 v2 and v3 (`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoHeating_v2/SURF_nanoHeating_v2.ino:95-96`).
-Its purpose cannot be established from the repository: **TODO**, trace the
-wire and record it here. Do not remove the line before that is done.
+Its purpose cannot be established from the repository.
 
 ### 6. Heater gates are undefined while the heating Nano is in reset
 
 From power-up or reset until `heat:104-105` runs, D5 and D6 are high-impedance.
 Whether the pads stay off during that interval, and while the Nano is
-unpowered, depends on a gate pull-down on the MOSFET stage. None is documented:
-**TODO**, verify by measuring the gate voltage with the Nano held in reset.
+unpowered, depends on a gate pull-down on the MOSFET stage. None is documented.
 
 ### 7. Header comment and code disagree on the integral gain
 
