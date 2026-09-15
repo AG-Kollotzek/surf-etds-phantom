@@ -1,0 +1,18 @@
+# Exact environment the archived measurements and this release were validated against.
+# Python 3.13.0. Regenerate with: pip freeze
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.63.0
+kiwisolver==1.5.0
+matplotlib==3.11.1
+numpy==2.5.2
+packaging==26.3
+pillow==12.3.0
+pyparsing==3.3.2
+pyserial==3.5
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
+python-dateutil==2.9.0.post0
+shiboken6==6.11.2
+six==1.17.0

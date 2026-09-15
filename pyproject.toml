@@ -1,0 +1,41 @@
+[project]
+name = "surf-terminal"
+version = "1.0.0"
+description = "Measurement terminal for the SURF Test Unit, a 3-DOF motion phantom for surface-guidance QA"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["radiotherapy", "SGRT", "quality-assurance", "motion-phantom", "medical-physics"]
+authors = [{ name = "Tim Buck" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = ["pyserial>=3.5,<4", "matplotlib>=3.7,<4", "PySide6>=6.5,<7"]
+
+[project.scripts]
+surf-terminal = "surf_terminal.terminal:main"
+
+[project.urls]
+Repository = "https://github.com/tim-buck/SURF_ETD_QA"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["surf_terminal", "surf_terminal.tools"]
+package-dir = { "" = "software" }
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# The measurement terminal is legacy clinical code; lint for correctness, not style.
+select = ["E4", "E7", "E9", "F"]
