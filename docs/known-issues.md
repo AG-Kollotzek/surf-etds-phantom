@@ -3,7 +3,7 @@
 This register lists the defects we know of in the acquisition chain of the SURF
 Test Unit. It serves two readers:
 
-- maintainers who will fix them;
+- maintainers of the acquisition code;
 - anyone reusing the archived data, who needs to know which values to distrust.
 
 **Scope.** The register covers:
@@ -20,8 +20,7 @@ tracked here.
 **Status.** None of these defects has been fixed in this release. The release
 preparation made no functional change to the firmware or the measurement path
 (CHANGELOG.md:7–8). Several issues concern code that moves hardware in a
-treatment room. A fix must be bench-validated on the actual hardware before it is
-merged (CONTRIBUTING.md:9–12). Reference the issue ID when fixing one.
+treatment room.
 
 ## How to read this register
 
@@ -164,17 +163,6 @@ continues with its delays and prompts as if the phantom had moved.
   family commands R.
 - No file records a rejected move.
 
-**Suggested fix**
-
-- Answer a rejected move with a distinct negative acknowledgement carrying a
-  reason (out of limits, axis not initialised, alarm).
-- Make the interpreter abort, or pause with a prompt whose answer is written to
-  the protocol.
-- Add a PC-side limit check for blueprint moves that mirrors the firmware limits.
-- Add `home` / `set_zero` blueprint steps, or a pre-run query of the
-  initialisation state.
-- Persist every rejection (KI-09).
-
 ---
 
 <a id="ki-02"></a>
@@ -252,16 +240,6 @@ fabricated columns are mixed in the same file.
   temperatures. Without the blueprint and its timing, this cannot be told apart
   from "no motion commanded".
 
-**Suggested fix**
-
-- Refuse to start logging or a blueprint unless both controllers are connected
-  and have delivered a valid frame within the last second. Allow simulation only
-  with an explicit `--simulate` flag.
-- In simulation, write a `simulated` marker into every output file and the
-  protocol, and write to a separate output tree.
-- Add a frame-age check to the logger, so rows written from stale data are
-  flagged.
-
 ---
 
 <a id="ki-03"></a>
@@ -303,16 +281,6 @@ fabricated columns are mixed in the same file.
 as a gap of up to 60 s before the next move, indistinguishable in the CSV from an
 operator pause. No run can be checked for this, because button presses are not
 logged (KI-09).
-
-**Suggested fix**
-
-- Poll `Serial.available()` inside every firmware motion loop (move, homing,
-  backlash correction) and abort on STOP_ALL; answer with an explicit STOPPED
-  reply.
-- On the PC, bypass the `axis_ready` gate for STOP_ALL, abort the interpreter and
-  record the event.
-- A software stop is not a substitute for a hardware emergency stop that removes
-  driver power.
 
 ---
 
@@ -369,15 +337,6 @@ CSV contains a temperature between −50 °C and 15 °C. A run recorded with swa
 ports would contain temperature-derived "positions" and position-derived
 "temperatures".
 
-**Suggested fix**
-
-- Add a device-identification handshake, for example a `HELLO` reply carrying
-  device type and firmware version, and refuse to operate a board of the wrong
-  type.
-- Give the two controllers disjoint opcode ranges.
-- Frame all messages with a checksum (KI-15).
-- Label the boards and the USB cables (`hardware/bom.csv`, item 15).
-
 ---
 
 <a id="ki-04"></a>
@@ -418,14 +377,6 @@ position of an unfinished move. No archived run shows an unambiguous instance: a
 frozen tail looks like an operator pause, and the console line was never
 persisted. Long motion-free tails with unrecorded causes exist, for example
 *2026-05-13 14:51:47* (see KI-15).
-
-**Suggested fix**
-
-- Put the whole loop body, including `in_waiting`, under the error handler.
-- On an I/O error, mark the link as down in shared state, and either stop logging
-  or write a link/frame-age column. Abort the interpreter with a persisted event,
-  then attempt a controlled reconnect.
-- Move the watchdog out of the worker, and give every interpreter wait a timeout.
 
 ---
 
@@ -491,15 +442,6 @@ of the motor shaft.
   repository and is not assessed here.
 - Whether a driver alarm occurred during any archived run cannot be determined.
 
-**Suggested fix**
-
-- Log the status byte and controller time as columns.
-- Check ALM inside every motion loop and abort with an error reply.
-- Wire the R driver's ALM output.
-- Add output-side position verification, at least at dwell points: linear
-  encoders or a dial gauge on H and V, and an absolute encoder behind the R gear.
-  Log it next to the commanded value.
-
 ---
 
 <a id="ki-06"></a>
@@ -548,14 +490,6 @@ then do not protect the mechanical range.
   initialisation being lost between runs.
 - Homing during logging shows up as excursions beyond the envelope. For example,
   *2026-02-17 17:08:46* reaches H = 40.91 mm and V = 62.5 mm.
-
-**Suggested fix**
-
-- Reply success or failure to `HOME_AXIS`.
-- Refuse H and V moves until the axis is homed, as the firmware already does for R.
-- Report the initialisation state in the status byte and log it in every row.
-- Give R a physical reference (index mark or absolute encoder).
-- Record homing events and their outcome in the protocol.
 
 ---
 
@@ -617,17 +551,6 @@ feedback is a console line.
 - **Undocumented entries.** Entries 1–8 of the archived table match the committed
   copy. The source of entries 9–12 is not documented in this repository.
 
-**Suggested fix**
-
-- Validate the file on selection (schema, key format, entry shape) and refuse
-  anything else.
-- Write via temporary file, `fsync` and atomic replace, keeping a backup.
-- Make a failed write blocking (modal error with retry or abort) and record the
-  error text in the protocol.
-- Prefer one append-only linkage file per run over a shared file that is
-  rewritten.
-- Keep dry runs away from production files.
-
 ---
 
 <a id="ki-08"></a>
@@ -688,16 +611,6 @@ waiting, or always times out and the operator continues.
 - The `Stable_A` and `Stable_B` columns remain usable for post-hoc screening.
   Caveat: `Set_A` and `Set_B` may not be the controller's setpoint (KI-14).
 
-**Suggested fix**
-
-- Define stability over a time window measured in seconds, not a sample count.
-- Clear the history on every setpoint change.
-- Treat `stable` as stale until a frame received after the change has been
-  evaluated.
-- Make the timeout configurable and longer than the stability window.
-- Record wait start, end, outcome and any operator override in the protocol.
-- Remove the simulation wording from the prompt.
-
 ---
 
 <a id="ki-23"></a>
@@ -753,17 +666,6 @@ waiting, or always times out and the operator continues.
   (KI-11). Their firmware did less work per step-loop iteration, so their ceiling
   is not known.
 
-**Suggested fix**
-
-- Record the realised speed, or both the commanded and the achievable step rate,
-  in the run data.
-- Have the firmware reject commanded rates it cannot generate, or clamp them and
-  report the clamp. Validate blueprint speeds against that same limit.
-- If the controller or the step-generation code is changed so that the ceiling
-  rises, **re-validate every blueprint before use**. Existing blueprints would
-  then move about 4 times (20 mm/s) to 10 times (50 mm/s) faster than anything
-  recorded so far (`docs/safety.md` G9).
-
 ---
 
 <a id="ki-09"></a>
@@ -816,20 +718,6 @@ which blueprint version ran, or which firmware and settings were active.
 - The absence of an error in the archive is not evidence that none occurred.
   KI-01, KI-02, KI-03, KI-04, KI-07, KI-08, KI-15 and KI-23 are all silent in the
   files.
-
-**Suggested fix**
-
-- Write a per-run, append-only event log (JSON lines), stamped with PC time, of:
-  - every console message;
-  - every command, acknowledgement and watchdog event;
-  - every operator action.
-- Store in the run header:
-  - a copy or hash of the blueprint;
-  - the terminal version (`git describe`);
-  - a firmware version string reported by each controller on connect (the unused
-    `HELLO` opcode, `SURF_nanoAxis_v5.ino:12`, could carry it);
-  - port names and settings.
-- Put a run ID into every output file.
 
 ---
 
@@ -885,15 +773,6 @@ occasional gaps. Positions during motion lag their timestamps.
   (`data/raw/2026-03-10/runs.csv:40`). The precision of that alignment is bounded
   by the effects above.
 
-**Suggested fix**
-
-- Schedule samples on absolute deadlines.
-- Log the controller `millis()` of the frame used, and the PC receive time.
-- Log the age of the temperature frame, or write temperatures only when a new
-  frame arrives.
-- Record the logging start as ISO 8601 with microseconds.
-- Record the clock offset between the PC and the tracking workstation.
-
 ---
 
 <a id="ki-11"></a>
@@ -929,7 +808,7 @@ target appears only after the move has finished.
 - The run at 16:27:04 on 2026-02-24 already contains intermediate positions, ten
   minutes before the change was committed.
 
-**Suggested fix.** No change is needed in the current firmware. For reuse, exclude
+**For reuse.** Exclude
 the motion phases of these runs. Do not reconstruct them from blueprint speeds:
 the commanded linear speeds were not realised (KI-23), and the speed ceiling of
 this older firmware is unknown.
@@ -987,17 +866,6 @@ session.
   switched on during that campaign. No acquisition file shows when, or whether it
   stayed on for later runs and campaigns.
 
-**Suggested fix**
-
-- Make compensation a firmware setting that is reported in the status frame and
-  logged in every row, with a matching blueprint step.
-- Track flank state regardless of the on/off flag.
-- Log the correction instead of hiding it.
-- Re-measure backlash under load, in both directions, with a documented method and
-  uncertainty.
-- Consider approaching dwell points from a single direction instead
-  ([`design-notes/kinematics-rationale.md`](design-notes/kinematics-rationale.md)).
-
 ---
 
 <a id="ki-13"></a>
@@ -1044,13 +912,6 @@ session.
   the absolute scale error of every archived R value is unknown. It may exceed
   both effects above.
 - **H and V** (800 steps/mm) are affected by truncation only at the 1.25 µm level.
-
-**Suggested fix**
-
-- Define every scale factor in one place, have the firmware report it, and log it.
-- Round instead of truncating, and log the step target actually sent.
-- Calibrate R against an independent angle reference over the full range, in both
-  directions, and archive the procedure, raw data and uncertainty.
 
 ---
 
@@ -1099,16 +960,6 @@ session.
   `2026-02-pilot/ETD_QA_BasicPoP_20260217_170846.csv` (2 rows) and the four
   2026-05-13 runs (46 rows). Averages over these files are corrupted unless the
   sentinel is filtered.
-
-**Suggested fix**
-
-- Send both setpoints on connect, or better, have the firmware report setpoint and
-  duty in every frame, and log the reported values.
-- Update the PC's state only after a successful send.
-- Log a sensor-valid flag, and write empty cells instead of sentinels.
-- Check the declared heating condition against the logged state at the end of the
-  run.
-- Range-check blueprint `heat` steps.
 
 ---
 
@@ -1171,17 +1022,6 @@ phantom is still moving, and hangs without an error message.
 - No QA input in any `_QA.csv` falls during motion, so no off-by-one sequence was
   found. Only runs from 2026-05-13 onward have QA input timestamps.
 
-**Suggested fix**
-
-- Frame every message with sync bytes, length and CRC.
-- Give each command a sequence number that is echoed in its acknowledgement or
-  negative acknowledgement.
-- Make every opcode answer, including rejections and commands dropped in alarm
-  state.
-- Replace success-by-timeout with an error that aborts the run.
-- Wait on a per-command completion event instead of a shared boolean.
-- Add timeouts to the firmware's argument reads.
-
 ---
 
 <a id="ki-16"></a>
@@ -1220,14 +1060,6 @@ phantom is still moving, and hangs without an error message.
 - Both simulated dry runs of 2026-08 (KI-02) ran on a non-Windows machine, where
   these device names depend on the physical USB socket. A port mismatch is
   consistent with, but not proven as, their cause.
-
-**Suggested fix**
-
-- Add `--axis-port`, `--heat-port` and `--data-dir` options with
-  environment-variable fallbacks.
-- Detect ports by USB VID/PID and a firmware identification reply.
-- Refuse to measure without both controllers (KI-02).
-- Log the ports used (KI-09).
 
 ---
 
@@ -1277,15 +1109,6 @@ blank cells are ambiguous.
 - **`surface_tracking` rows.** Only `blueprints/qa/ETsurface_easyQA_draft*.json`
   use that mode, and no archived `_QA.csv` contains such a row.
 
-**Suggested fix**
-
-- Create a run context at blueprint start that owns every output path and
-  reference time, and clear it at the end.
-- Refuse `qa_input` when no run file is active.
-- Reject invalid input in the dialog instead of blanking it.
-- Write separate, explicit column sets per mode.
-- Record the telemetry file in the stop event.
-
 ---
 
 <a id="ki-18"></a>
@@ -1328,12 +1151,6 @@ blank cells are ambiguous.
 - **Numeric data unaffected.** Every point ID, mode and prefix in the blueprints is
   ASCII, and the main-format telemetry and `_QA.csv` files contain only ASCII.
 
-**Suggested fix**
-
-- Open every text file with an explicit encoding: `utf-8-sig` for blueprints, to
-  tolerate a byte-order mark, and `encoding="utf-8", newline=""` for CSVs.
-- Add a CI check that loads every blueprint on Windows with UTF-8 mode disabled.
-
 ---
 
 <a id="ki-19"></a>
@@ -1365,12 +1182,6 @@ blank cells are ambiguous.
   `logging stop` event nor an end time.
 - None of the archived protocols shows that pattern: every protocol with a
   `logging start` event also has a `logging stop` event.
-
-**Suggested fix**
-
-- Stop logging through the normal stop path.
-- Abort the interpreter and release its wait event before joining it.
-- Use `is_alive()` and `join()` for the logger.
 
 ---
 
@@ -1409,12 +1220,6 @@ blank cells are ambiguous.
   the overshoot and slow settling seen under KI-08, but cannot be separated from
   other causes.
 
-**Suggested fix**
-
-- Remove the duplicated block and make the integral reset explicit.
-- Correct the header comment.
-- Bench-characterise the step response before and after the change.
-
 ---
 
 <a id="ki-21"></a>
@@ -1452,12 +1257,6 @@ blank cells are ambiguous.
 - The endstop comment in particular invites a change that would break homing.
 
 **Effect on archived data.** None directly.
-
-**Suggested fix**
-
-- Correct the firmware comments when that code is next bench-validated.
-- Correct the console strings; operator-facing strings stay German, per
-  CONTRIBUTING.md:23–25.
 
 ---
 

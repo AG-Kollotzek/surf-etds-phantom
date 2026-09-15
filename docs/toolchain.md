@@ -55,8 +55,7 @@ Library use by sketch:
 `arduino:avr:nano:cpu=atmega328old` (legacy bootloader); current genuine boards
 use the default `cpu=atmega328`. The IDE settings record `arduino:avr:nano`
 with no CPU option, which means either the default was used or the option was
-not persisted. Determine it by attempting an upload with each; the one that
-succeeds identifies the board. Record the result here.
+not persisted. Which option the boards need is not recorded.
 
 **Library versions on the measurement laptop are not recorded.** AccelStepper
 behaviour relevant to the ground truth (step timing, `currentPosition()`
