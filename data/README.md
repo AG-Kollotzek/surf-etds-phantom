@@ -92,11 +92,11 @@ The `TrackingResult_*.json` exports of the ExacTrac Dynamic are not in this
 repository.
 
 - **2026-03-10 (paper campaign):** the 38 exports are in the analysis pipeline,
-  [github.com/tim-buck/SURF_DataAnalysis](https://github.com/tim-buck/SURF_DataAnalysis),
+  [github.com/tim-buck/surf-etds-analysis](https://github.com/tim-buck/surf-etds-analysis),
   under `paper_data/full_raw/01_json/`. `runs.csv` names the file for each run.
 - **2026-07-15, 2026-07-29, 2026-08-06:** the 20 exports referenced by
   `etds_qa_2026_config.json` are held in the separate clinical-QA repository
-  `lki_etds_qa2026`, not in SURF_DataAnalysis.
+  `lki_etds_qa2026`, not in surf-etds-analysis.
 - **All other campaigns:** whether tracker exports exist is not determinable
   from the archive.
 

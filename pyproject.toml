@@ -22,7 +22,7 @@ dependencies = ["pyserial>=3.5,<4", "matplotlib>=3.7,<4", "PySide6>=6.5,<7"]
 surf-terminal = "surf_terminal.terminal:main"
 
 [project.urls]
-Repository = "https://github.com/tim-buck/SURF_ETD_QA"
+Repository = "https://github.com/tim-buck/surf-etds-phantom"
 
 [build-system]
 requires = ["setuptools>=68"]

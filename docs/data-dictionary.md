@@ -167,7 +167,7 @@ All position columns are stored in the controller's native sign. Their mapping t
 patient or room coordinates (lateral/longitudinal/vertical, pitch/roll/yaw)
 depends on the phantom set-up and couch angle. It is defined by the kinematic
 model of the analysis pipeline (`kinematics_werror_v2.py` in
-[SURF_DataAnalysis](https://github.com/tim-buck/SURF_DataAnalysis)), not by this
+[surf-etds-analysis](https://github.com/tim-buck/surf-etds-analysis)), not by this
 dataset. Downstream tools flip signs differently: the MATLAB viewer
 `matlab/ETDCombinedJSONCSVViewerApp.m` negates `Pos_H` on load, and the analysis
 pipeline's legacy mode negates `Pos_R`. Never infer a room-coordinate sign from
@@ -401,14 +401,14 @@ Entries 13–20 agree with the `etds_timestamp` events of the corresponding
 
 Comma-separated, one header line, one row per raw CSV of the campaign (40 rows,
 32 of them used in the analysis), ASCII only. It materialises the dict
-`MEASUREMENT_10032026` from `DataConverter.py` in SURF_DataAnalysis. The dict was
+`MEASUREMENT_10032026` from `DataConverter.py` in surf-etds-analysis. The dict was
 previously the only record of which file belongs to which condition.
 
 | Column | Meaning |
 |---|---|
 | `run_id` | Key in `MEASUREMENT_10032026`. This is also the run number ("Messung") in the handwritten measurement protocol of the campaign: all 32 CSV/ETD number pairs agree with it. The analysis labels runs `meas_<NN>`. Empty for files not in the dict. Numbers 13, 20, 23 and 36 are protocol runs outside the evaluated set. |
 | `csv_file` | File name of the raw telemetry CSV in this folder. |
-| `etd_file` | ExacTrac tracking export for the run, resolved from the dict's `ETD` code exactly as the pipeline does. The file lives in `paper_data/full_raw/01_json/` of SURF_DataAnalysis, not here. Empty for unused files. |
+| `etd_file` | ExacTrac tracking export for the run, resolved from the dict's `ETD` code exactly as the pipeline does. The file lives in `paper_data/full_raw/01_json/` of surf-etds-analysis, not here. Empty for unused files. |
 | `group` | The dict's `Gruppe`, verbatim, because it is a grouping key in the pipeline. Values: `All axes` (H, then V, then R, sequentially), `Horizontal`, `Vertical`, `Rotation`, `Variable_Geschwindigkeit` (variable rotation speed), `Vertical_Slide` (H motion with V at +50 mm, which tilts the phantom). |
 | `roi_area` | The dict's `ROI_Area`, verbatim: `PhantomWithBuffer`, `Fitting`, `OnlyFrontSurface`, `Fiting`. The last is spelled as in the source dict (run 19), and the protocol describes it differently from run 17's `Fitting`. Empty for `Vertical_Slide`, which has no ROI entry in the dict. |
 | `heatingpads` | The dict's `Heatingpads`: `OFF` or `32` (°C). Consistent with the telemetry: `OFF` runs have `Set` 25.0 and `Temp` 22.97–23.23 °C; `32` runs have `Set` 32.0 and `Temp` 31.94–32.05 °C. |
@@ -416,7 +416,7 @@ previously the only record of which file belongs to which condition.
 | `used_in_analysis` | `true` for the 32 dict entries, `false` otherwise. |
 | `note` | For unused files, the reason for exclusion **where the repositories establish one**. For run 34, a verified structural caveat. An empty `note` means no reason is recorded; it does not mean the file is valid. |
 | `blueprint` | Blueprint file named for the run's series in the protocol, checked against the file's logging prefix and dwell sequence. Empty where the protocol names none or where the check fails (run 23). Five of the six names also exist in `blueprints/pop/` (with a 32 °C `heat` step) as well as in `blueprints/heating-off/`; which copy was loaded is **not determinable from the archive**. The move and delay steps of both copies are identical to the repository state of 2026-03-10. |
-| `protocol_remark` | Run-specific remarks from the handwritten protocol (German, `Messung_Protokoll_10_03_2026.pdf` in SURF_DataAnalysis), translated. Text in square brackets marks where the protocol conflicts with the files. |
+| `protocol_remark` | Run-specific remarks from the handwritten protocol (German, `Messung_Protokoll_10_03_2026.pdf` in surf-etds-analysis), translated. Text in square brackets marks where the protocol conflicts with the files. |
 
 ---
 

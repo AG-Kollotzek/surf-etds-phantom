@@ -14,7 +14,7 @@ Test Unit. It serves two readers:
 
 Issues in the evaluation chain (time alignment, kinematic model, statistics)
 belong to the analysis repository
-[`SURF_DataAnalysis`](https://github.com/tim-buck/SURF_DataAnalysis) and are not
+[`surf-etds-analysis`](https://github.com/tim-buck/surf-etds-analysis) and are not
 tracked here.
 
 **Status.** None of these defects has been fixed in this release. The release

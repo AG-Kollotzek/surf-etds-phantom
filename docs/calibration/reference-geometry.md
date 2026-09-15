@@ -10,8 +10,8 @@ reading results obtained with it:
 
 Both were derived during pre-publication review from the exported evaluation
 files of the analysis repository
-[`SURF_DataAnalysis`](https://github.com/tim-buck/SURF_DataAnalysis), as they
-stood on 15 September 2026 (HEAD `9bd63bb`). The computation is described below
+[`surf-etds-analysis`](https://github.com/tim-buck/surf-etds-analysis), as they
+stood on 15 September 2026. The computation is described below
 so it can be repeated; it is not part of this repository.
 
 ## 1. Geometry the kinematic model does not contain
