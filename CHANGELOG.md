@@ -16,6 +16,10 @@ functional change to the firmware or to the measurement path.**
   README, hardware pinout, a bill-of-materials skeleton and assembly notes,
   safety and disclaimer, toolchain, a known-issues register (23 entries), and
   the design rationale for the 3-DOF kinematics.
+- `docs/calibration/reference-geometry.md`: the phantom geometry missing from the
+  kinematic model (tilt-axis yaw ≈ 2.1°, rotation-axis offset ≈ 1.3 mm), the
+  documented phantom setup, and the sensitivity of kV cross-validation at each
+  imaging position.
 - `data/raw/2026-03-10/runs.csv` — the run-to-condition mapping for the paper
   campaign, which previously existed only as a hard-coded dict in the analysis
   repository.

@@ -64,6 +64,7 @@ data should read that file first.
 | [`docs/data-dictionary.md`](docs/data-dictionary.md) | Every column of every file family |
 | [`docs/toolchain.md`](docs/toolchain.md) | Python, Arduino and MATLAB versions |
 | [`docs/design-notes/kinematics-rationale.md`](docs/design-notes/kinematics-rationale.md) | Why 3 DOF, and what 3 DOF cannot support |
+| [`docs/calibration/reference-geometry.md`](docs/calibration/reference-geometry.md) | Geometric imperfections the kinematic model lacks, and how sensitive the kV cross-validation is at each position |
 | [`data/README.md`](data/README.md) | Campaign inventory and dataset reuse notes |
 
 ## Quick start

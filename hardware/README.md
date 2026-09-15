@@ -37,6 +37,7 @@ the terminal, the calibration files and a lab notebook.
 | [`calibration/heating-pad-calibration.xlsx`](calibration/heating-pad-calibration.xlsx) | The same 12 rows as a spreadsheet. It contains no fit: its drawing part is empty |
 | [`calibration/heating-pad-calibration.png`](calibration/heating-pad-calibration.png) | Plot of internal (DS18B20), external (Testo 925) and setpoint temperature against setpoint, with the internal-minus-external gradient. No regression line |
 | [`../docs/calibration/backlash-measurement-raw.txt`](../docs/calibration/backlash-measurement-raw.txt) | Raw lab notebook (German) of the H and R backlash sessions, 09-10.03.26. Translated and interpreted in [`assembly.md`](assembly.md) §3.3 and §4.2 |
+| [`../docs/calibration/reference-geometry.md`](../docs/calibration/reference-geometry.md) | Geometry missing from the kinematic model (tilt-axis yaw ≈ 2.1°, rotation-axis offset ≈ 1.3 mm) and the lever-arm sensitivity of kV cross-validation at each imaging position |
 | [`../docs/safety.md`](../docs/safety.md) | Hazards, existing protections and their gaps, pre-use checklist |
 
 ## Thermal calibration provenance
