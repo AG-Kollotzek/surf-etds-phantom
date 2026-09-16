@@ -3,9 +3,9 @@ name: arduino-build
 on:
   push:
     branches: [main]
-    paths: ["firmware/**"]
+    paths: ["firmware/**", ".github/workflows/arduino-build.yml"]
   pull_request:
-    paths: ["firmware/**"]
+    paths: ["firmware/**", ".github/workflows/arduino-build.yml"]
   workflow_dispatch:
 jobs:
   compile:
