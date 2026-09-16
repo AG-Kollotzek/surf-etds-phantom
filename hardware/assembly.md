@@ -4,7 +4,7 @@
 > Test Unit exists in this repository.** Before release preparation, the
 > `hardware/` tree held placeholder directories for schematics, PCB, wiring,
 > pinout, enclosure, suppliers and safety, and every one of them contained only
-> a `.gitkeep` file (`git ls-tree -r 270cdf5 -- hardware`).
+> a `.gitkeep` file (`git ls-tree -r 1d19cc7 -- hardware`).
 
 This document therefore records only what the firmware, the terminal, the
 calibration files and the lab notebook actually establish. Read
@@ -19,7 +19,7 @@ calibration files and the lab notebook actually establish. Read
 | `calib:<line>` | [`firmware/tools/rotation_calibration/rotation_calibration.ino`](../firmware/tools/rotation_calibration/rotation_calibration.ino) |
 | `terminal.py:<line>` | [`software/surf_terminal/terminal.py`](../software/surf_terminal/terminal.py) |
 | `notebook:<line>` | [`docs/calibration/backlash-measurement-raw.txt`](../docs/calibration/backlash-measurement-raw.txt), translated from German |
-| `270cdf5:<path>:<line>` | superseded file in git history, read with `git show 270cdf5:<path>` |
+| `1d19cc7:<path>:<line>` | superseded file in git history, read with `git show 1d19cc7:<path>` |
 
 Pins are in [`pinout.md`](pinout.md); parts in [`bom.csv`](bom.csv).
 
@@ -40,7 +40,7 @@ Pins are in [`pinout.md`](pinout.md); parts in [`bom.csv`](bom.csv).
   direction (`axis:83`).
 - **V is not a pure vertical translation.** A removed design discussion states
   that the V slide produces a coupled Z shift and pitch/yaw motion
-  (`270cdf5:docs/PoPargumentation&blueprints.txt:9`). The geometry that causes
+  (`1d19cc7:docs/PoPargumentation&blueprints.txt:9`). The geometry that causes
   this is not documented.
 
 The kinematic chain and the positive directions of H and R are not documented
@@ -61,7 +61,7 @@ guarding of pinch points is documented ([`../docs/safety.md`](../docs/safety.md)
 |---|---|---|
 | Steps per mm (H and V) | 800 | `axis:39`, `terminal.py:68` |
 | Resolution | 1/800 mm = 1.25 µm per step | derived |
-| Decomposition of 800 steps/mm | 200 full steps/rev × 16 microsteps ÷ 4 mm lead | `270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:62-65` (superseded sketch) |
+| Decomposition of 800 steps/mm | 200 full steps/rev × 16 microsteps ÷ 4 mm lead | `1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:62-65` (superseded sketch) |
 | Implied driver setting | 3 200 pulses per motor revolution, **if** the lead is 4 mm | derived from the row above |
 | Acceleration | 80 mm/s² | `axis:86`, `:263-264` |
 | Speed cap (firmware) | 50 mm/s | `axis:42`; not the binding limit, see [`../docs/safety.md`](../docs/safety.md) G9 |
@@ -142,7 +142,7 @@ coupling wind-up, screw backlash and nut play lie outside that loop.
 |---|---|---|
 | **16.156** steps/° | `axis:40` (firmware), `terminal.py:69` (terminal) | commanding R (`terminal.py:728`, `:1222`), limits (`axis:69-70`), and converting logged R positions to degrees (`terminal.py:478`) |
 | **16.1599** steps/° | `calib:9`, under the heading "calibrated values" (`calib:8`) | the bench calibration sketch only |
-| 17.78 steps/° (nominal) | 200 steps/rev × 16 microsteps × gear ratio 2.0 ÷ 360 (`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:68-73`) | superseded first sketch |
+| 17.78 steps/° (nominal) | 200 steps/rev × 16 microsteps × gear ratio 2.0 ÷ 360 (`1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:68-73`) | superseded first sketch |
 
 **Size of the discrepancy (derived).** 16.1599 − 16.156 = 0.0039 steps/°,
 i.e. 0.024 %. One step is 1/16.156 = 0.062°. At the +120° limit the two values
@@ -153,9 +153,9 @@ by 0.37 steps (0.023°). The difference is below one step anywhere in R's range.
 
 | Date | Commit | Change |
 |---|---|---|
-| 2025-12-17 | `1f6ab9a` | Terminal value changed from 16.515 to 16.156. Commit message: "rotation axis calibrated over 10 revolutions ±2°". |
-| 2026-01-26 | `2d68ed1` | Axis firmware changed to 16.156. |
-| 2026-03-25 | `2406ae3` | 16.1599 first appears, in the calibration sketch, after the notebook sessions of 09-10.03.26. |
+| 2025-12-17 | `0fdd738` | Terminal value changed from 16.515 to 16.156. Commit message: "rotation axis calibrated over 10 revolutions ±2°". |
+| 2026-01-26 | `6763f8a` | Axis firmware changed to 16.156. |
+| 2026-03-25 | `c9e7dbc` | 16.1599 first appears, in the calibration sketch, after the notebook sessions of 09-10.03.26. |
 
 16.1599 was never propagated to the firmware or the terminal. Two consequences:
 
@@ -169,7 +169,7 @@ by 0.37 steps (0.023°). The difference is below one step anywhere in R's range.
 
 **The calibrated value is about 9 % below the nominal 17.78 steps/°.** The
 nominal 1:2 ratio (`GEAR_RATIO_R = 2.0`, superseded sketch; "bevel gearbox 1:2",
-`270cdf5:docs/PoPargumentation&blueprints.txt:44`) with 3 200 pulses/rev does
+`1d19cc7:docs/PoPargumentation&blueprints.txt:44`) with 3 200 pulses/rev does
 not reproduce the calibrated value. The actual tooth counts and microstep
 setting are not recorded. 360 × 16.156 = 5 816 steps per output revolution.
 
@@ -340,9 +340,9 @@ positive (`HOMING_SIGN_H = HOMING_SIGN_V = +1`, `axis:82-83`).
   switch moves the working zero by the same amount.
 - **The offsets are tuning values, not design constants.** Superseded sketches
   carry 61.0 mm for both axes
-  (`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:84`) and
+  (`1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:84`) and
   41.0 mm (H) / 62.5 mm (V)
-  (`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:54-55`).
+  (`1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:54-55`).
 - **Positions do not survive a reset.** Every reset of the axis Nano loses
   them; re-home after every terminal start
   ([`../docs/safety.md`](../docs/safety.md) G10).

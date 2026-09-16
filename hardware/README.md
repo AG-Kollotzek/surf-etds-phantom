@@ -64,7 +64,7 @@ same constants are applied to both pads**, A and B.
   [`calibration/heating-pad-calibration.csv`](calibration/heating-pad-calibration.csv),
   renamed during release preparation. Its original path, and that of its
   companion `Kalibration HP vorne 19.01.xlsx`, are in git history under
-  `hardware/phantom/` at commit `270cdf5`.
+  `hardware/phantom/` at commit `1d19cc7`.
 - **Front pad only.** "HP vorne" means "heating pad, front". Which of the
   firmware's pads A and B is the front pad is not recorded anywhere, so it is
   not known which pad the model was fitted to.

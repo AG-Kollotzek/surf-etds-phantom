@@ -15,8 +15,8 @@ and `terminal.py:<line>` to
 [`software/surf_terminal/terminal.py`](../software/surf_terminal/terminal.py).
 Library behaviour is cited from the library versions pinned in
 `.github/workflows/arduino-build.yml:31-37` (AccelStepper 1.64, OneWire 2.3.8,
-DallasTemperature 4.0.6). `270cdf5:<path>:<line>` refers to a superseded file
-retained in git history (`git show 270cdf5:<path>`). German source strings are
+DallasTemperature 4.0.6). `1d19cc7:<path>:<line>` refers to a superseded file
+retained in git history (`git show 1d19cc7:<path>`). German source strings are
 quoted in English translation. Pin-level detail is in
 [`hardware/pinout.md`](../hardware/pinout.md).
 
@@ -101,7 +101,7 @@ See [`hardware/assembly.md`](../hardware/assembly.md).
 | R refuses to move until zeroed | `isTargetSafe` returns false for R until `rAxisInitialized` is set | `axis:99`, `:151-152`; set at `:394`, `:423` | "Zeroed" means only that someone issued `h r` or `set r zero` (G2) |
 | Speed caps | Clip commanded speed to 50 mm/s = 40 000 steps/s (H, V) and 90 °/s = 1 454 steps/s (R) | `axis:42-43`, `:50-51`, `:316-320` | One-sided, and on H and V never the binding limit (G9) |
 | Acceleration | 80 mm/s² on H and V, 40 °/s² on R, set at start-up | `axis:86-87`, `:263-267` | — |
-| Normally closed endstops on H and V, with homing | Reference switches at the positive end. Homing sets the switch trigger point to +33 mm (H) and +62 mm (V), then drives to 0. | `axis:30`, `:33`, `:80-83`, `:126-128`, `:204-241`; NC wiring per `270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:23-24` | Read only during homing (G3). A broken wire reads "triggered" and makes homing run the other way (G3). |
+| Normally closed endstops on H and V, with homing | Reference switches at the positive end. Homing sets the switch trigger point to +33 mm (H) and +62 mm (V), then drives to 0. | `axis:30`, `:33`, `:80-83`, `:126-128`, `:204-241`; NC wiring per `1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:23-24` | Read only during homing (G3). A broken wire reads "triggered" and makes homing run the other way (G3). |
 | Homing timeout | Each search phase gives up after 20 s | `axis:78`, `:198` | The failure is reported as success (G5) |
 | Driver alarm inputs on H and V | Between commands: stop all steppers, set `isAlarmState`, discard later `MOVE_AXIS` and `HOME_AXIS` frames. Also checked during the homing search. | `axis:30`, `:33`, `:185`, `:273-275`, `:301-305` | Not checked during a move; non-latching; invisible on the PC; no input for R; an open wire reads "no alarm" (G4) |
 
@@ -176,7 +176,7 @@ short of removing power. See the [recommendation](#8-recommendation-fit-a-hardwi
 
 - **No switch and no alarm input.** Only PUL, DIR and ENA pins are defined for R
   (`axis:35`). A superseded sketch says so directly: "R has no endstop/alarm"
-  (`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:19`).
+  (`1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:19`).
 - **Homing R does not move it.** `HOME_AXIS` on R only calls
   `setCurrentPosition(0)` and sets `rAxisInitialized` (`axis:392-396`).
   `SET_ZERO` on R does the same (`axis:420-423`). The comment in `h all` says R
@@ -404,8 +404,8 @@ positions.
 - **Moving parts.** Two slides and a rotation stage carrying the phantom and
   the pads. The phantom's mass, the moving mass of each axis and the order in
   which the axes are stacked are not documented. The motors are NEMA 23
-  (`270cdf5:README.md:1`) driving screws with a 4 mm lead
-  (`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:62-65`). That
+  (`1d19cc7:README.md:1`) driving screws with a 4 mm lead
+  (`1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:62-65`). That
   combination can develop high axial force at low speed. The driver current
   setting that bounds the force is not recorded, and no force has been measured.
 - **Pinch, crush and shear points.** These occur at the ends of both slides,
@@ -415,7 +415,7 @@ positions.
   larger range at the top" / "Example: must not go down deep";
   `terminal.py:1238`: homing drives "V up"); confirm this on the rig. **No guard, cover or enclosure is
   documented.** The `hardware/enclosure/` and `hardware/safety/` directories at
-  `270cdf5` held only `.gitkeep` placeholders.
+  `1d19cc7` held only `.gitkeep` placeholders.
 - **Unexpected motion.** The rig can move with no operator action:
   - queued commands sent up to 60 s after STOP ALL, and blueprints resuming
     after it (G1);
@@ -462,7 +462,7 @@ positions.
   (`terminal.py:30-39`).
 - Three CL57T drivers, taking PUL, DIR and ENA from the axis Nano. H and V
   return ALM ([`pinout.md`](../hardware/pinout.md)).
-- Three stepper motors, NEMA 23 per `270cdf5:README.md:1`.
+- Three stepper motors, NEMA 23 per `1d19cc7:README.md:1`.
 - Two heating pads switched by MOSFETs, which the heating Nano drives HIGH to
   turn on (`heat:21-22`, `:150-156`).
 - The ENA outputs are written once at start-up and never released by any

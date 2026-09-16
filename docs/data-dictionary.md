@@ -302,7 +302,7 @@ The TXT prints Python representations of values (`True`, `None`,
 ## 6. Family D: legacy pilot CSV
 
 - **Files:** 12. `2025-12-pilot` holds 5 files recorded on 2025-12-04; `2026-01-pilot` holds 7 files recorded on 2026-01-26. 66,638 rows in total.
-- **Writer:** the retired command-line logger `control_terminal.py`. It is not in the current tree; see git history, first version `65ed3d4` (2025-12-10) and revision `d7c168f` (2026-01-26).
+- **Writer:** the retired command-line logger `control_terminal.py`. It is not in the current tree; see git history, first version `94383f4` (2025-12-10) and revision `8620814` (2026-01-26).
 - **Format:** delimiter `,`, header `PC_Time,Arduino_Time,Pos_H_Steps,Pos_V_Steps,Pos_R_Steps,Status_Bits`. No temperature columns.
 
 ```
@@ -321,7 +321,7 @@ PC receives it. The controller sends a packet every 50 ms, so the rate is about
 | `Arduino_Time` | int | ms | Controller `millis()`, i.e. time since the controller started. It is 50 in the first row of all 12 files, consistent with the controller restarting when the logger opened the serial port. |
 | `Pos_H_Steps` | int | steps | Raw step counter of the horizontal axis. **mm = steps ÷ 800** (`STEPS_PER_MM`). |
 | `Pos_V_Steps` | int | steps | Raw step counter of the vertical axis. **mm = steps ÷ 800**. |
-| `Pos_R_Steps` | int | steps | Raw step counter of the rotation axis. **Degrees = steps ÷ 16.156** (`STEPS_PER_DEG`, the calibration introduced on 2025-12-17 in `1f6ab9a`). See the warning below. |
+| `Pos_R_Steps` | int | steps | Raw step counter of the rotation axis. **Degrees = steps ÷ 16.156** (`STEPS_PER_DEG`, the calibration introduced on 2025-12-17 in `0fdd738`). See the warning below. |
 | `Status_Bits` | int | bit field | Status byte from the controller; see below. |
 
 **Rotation constant in the December files.** The 2025-12-04 files were
@@ -424,13 +424,13 @@ previously the only record of which file belongs to which condition.
 
 | Campaign folders | Recorded | Families | Writer, with corroborating commit | Logging cadence | Temperature and stability |
 |---|---|---|---|---|---|
-| `2025-12-pilot` | 2025-12-04 | D | `control_terminal.py` (`65ed3d4`) | One row per controller packet (50 ms). Median ΔPC_Time 0.0503 s (19.9 Hz). | None. Rotation commanded with 16.515 steps/°. |
-| `2026-01-pilot` | 2026-01-26 | D | `control_terminal.py` (`d7c168f`); 16.156 steps/° since `1f6ab9a` (2025-12-17) | As above. Median 0.0500–0.0503 s (20.0 Hz). | None. |
-| `2026-02-pilot`, the three `messung_20260210_*` files | 2026-02-10 | A | GUI terminal `SURF_Terminal.py` (first added 2026-01-28; version committed that day, `46073dd`) | `interval = 0.5` s. Median 0.502–0.505 s (≈2.0 Hz). | **Uncalibrated** sensor values (2 decimals). `Stable` window of 20 samples. No no-controller fallback in that code. |
-| `2026-02-pilot`, the other 12 files | 2026-02-16 to 02-19 | A | Fallback and 120-sample window (`dee82f5`); calibration (`79f7e33`) | `interval = 0.5` s. Median 0.504–0.505 s (≈2.0 Hz). | Calibrated, `(T + 3.5)/1.17`. |
-| `2026-02-24` to `2026-04-08` | | A | `interval = 0.1` s (`e45b574`, 2026-02-24) | Measured values in the table below. | Calibrated. |
-| `2026-05-12` to `2026-07-29` | | A + B | `qa_input` and `_QA.csv` (`f798e2f`, 2026-05-12) | As above. | Point IDs `minVerschub`/`MaxVerschub`. |
-| `2026-08-06`, `2026-08-21` | | A + B + C | Protocols, config linkage, `log_checkpoint` (`baf97ac`, 2026-08-06) | As above. | Point IDs `endposition_d1`/`_d2`. |
+| `2025-12-pilot` | 2025-12-04 | D | `control_terminal.py` (`94383f4`) | One row per controller packet (50 ms). Median ΔPC_Time 0.0503 s (19.9 Hz). | None. Rotation commanded with 16.515 steps/°. |
+| `2026-01-pilot` | 2026-01-26 | D | `control_terminal.py` (`8620814`); 16.156 steps/° since `0fdd738` (2025-12-17) | As above. Median 0.0500–0.0503 s (20.0 Hz). | None. |
+| `2026-02-pilot`, the three `messung_20260210_*` files | 2026-02-10 | A | GUI terminal `SURF_Terminal.py` (first added 2026-01-28; version committed that day, `cb7d019`) | `interval = 0.5` s. Median 0.502–0.505 s (≈2.0 Hz). | **Uncalibrated** sensor values (2 decimals). `Stable` window of 20 samples. No no-controller fallback in that code. |
+| `2026-02-pilot`, the other 12 files | 2026-02-16 to 02-19 | A | Fallback and 120-sample window (`8475948`); calibration (`e3c605b`) | `interval = 0.5` s. Median 0.504–0.505 s (≈2.0 Hz). | Calibrated, `(T + 3.5)/1.17`. |
+| `2026-02-24` to `2026-04-08` | | A | `interval = 0.1` s (`d74cb1c`, 2026-02-24) | Measured values in the table below. | Calibrated. |
+| `2026-05-12` to `2026-07-29` | | A + B | `qa_input` and `_QA.csv` (`8675262`, 2026-05-12) | As above. | Point IDs `minVerschub`/`MaxVerschub`. |
+| `2026-08-06`, `2026-08-21` | | A + B + C | Protocols, config linkage, `log_checkpoint` (`9338502`, 2026-08-06) | As above. | Point IDs `endposition_d1`/`_d2`. |
 
 The commit dates are corroborating evidence, not proof of the exact build that
 wrote a file. The first files in a new format can predate the commit by minutes

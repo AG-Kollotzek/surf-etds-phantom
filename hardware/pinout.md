@@ -9,9 +9,9 @@ Sources:
 - Axis controller: [`firmware/axis/SURF_nanoAxis_v5/SURF_nanoAxis_v5.ino`](../firmware/axis/SURF_nanoAxis_v5/SURF_nanoAxis_v5.ino) (cited as `axis:<line>`)
 - Heating controller: [`firmware/heating/SURF_nanoHeating_v4/SURF_nanoHeating_v4.ino`](../firmware/heating/SURF_nanoHeating_v4/SURF_nanoHeating_v4.ino) (cited as `heat:<line>`)
 - PC side: [`software/surf_terminal/terminal.py`](../software/surf_terminal/terminal.py) (cited as `terminal.py:<line>`)
-- Superseded sketches are cited as `270cdf5:<path>:<line>`. They were removed
+- Superseded sketches are cited as `1d19cc7:<path>:<line>`. They were removed
   from the working tree during release preparation and remain readable with
-  `git show 270cdf5:<path>`.
+  `git show 1d19cc7:<path>`.
 
 German source comments are quoted in English translation.
 
@@ -86,7 +86,7 @@ Notes:
   switches a pad off with `digitalWrite(h.pin, LOW)` (`heat:62`), and the
   soft-PWM writes `HIGH` during the on-fraction of each window (`heat:151-152`,
   `:155-156`). A superseded sketch states it explicitly:
-  `MOSFET_ACTIVE_HIGH = true` (`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoHeating_v2.1.ino:31`).
+  `MOSFET_ACTIVE_HIGH = true` (`1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoHeating_v2.1.ino:31`).
   D5 and D6 are hardware-PWM pins, but the firmware does not use `analogWrite`.
 - **Which pad is A and which is B** (front or rear) is not recorded anywhere.
   The thermal calibration was made on the *front* pad; see
@@ -114,8 +114,8 @@ comments are stale.** With `INPUT_PULLUP` (`axis:246`, `:249`) and a normally
 closed (NC) contact between pin and GND, the pin reads LOW at rest and HIGH when
 the contact opens. Two superseded sketches record exactly this wiring:
 
-- `270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:23-24`: "Endstops: wired NC: rest = LOW, triggered = HIGH"
-- `270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:204`: "Since you use NC switches (HIGH = pressed/interrupted), we check for HIGH"
+- `1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:23-24`: "Endstops: wired NC: rest = LOW, triggered = HIGH"
+- `1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:204`: "Since you use NC switches (HIGH = pressed/interrupted), we check for HIGH"
 
 **Pitfall for rebuilders:** anyone who follows the comments and fits normally
 open (NO) switches, and any installation with a broken or unplugged endstop
@@ -138,11 +138,11 @@ either way (`axis:399-401`). See [`docs/safety.md`](../docs/safety.md).
 disconnected ALM wire reads `HIGH` = "no alarm". The CL57T's ALM output stage
 and its configured polarity are not documented in the repository. A superseded
 sketch comments "CL57T ALM is LOW on fault"
-(`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:210`),
+(`1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:210`),
 and an earlier one carries only an "ALM level (autodetect)" placeholder
-(`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:101-103`). The R
+(`1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:101-103`). The R
 driver has no ALM input at all (also noted as "R has no
-endstop/alarm" at `270cdf5:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:19`).
+endstop/alarm" at `1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoAxis_v3/SURF_nanoAxis_v3.ino:19`).
 The firmware reports both alarm bits in its status byte (`axis:166-172`), but
 the terminal reads that byte and discards it (`_stat`, `terminal.py:473`).
 
@@ -152,7 +152,7 @@ All three ENA pins are written `LOW` in `setup()` under the comment "Enable
 Drivers" (`axis:256-257`), and nothing ever writes them again. Neither
 `STOP_ALL` (`axis:429-432`) nor a driver alarm (`axis:273-275`) disables a
 driver. A superseded sketch uses the same convention,
-`ENABLE_ACTIVE_LEVEL = LOW` (`270cdf5:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:79`).
+`ENABLE_ACTIVE_LEVEL = LOW` (`1d19cc7:firmware/arduino/src/oldDrives/firsttry_mitebox.ino:79`).
 Whether LOW actually means "enabled" depends on how the CL57T ENA input is
 wired, and that is not documented. From power-up or reset until `setup()` runs,
 all these pins are high-impedance. How the drivers behave with floating
@@ -168,7 +168,7 @@ value and location are not recorded.
 
 `pinMode(11,OUTPUT); digitalWrite(11,HIGH);` (`heat:103`) has no comment, and
 the same two lines appear, also uncommented, in the superseded heating sketches
-v2 and v3 (`270cdf5:firmware/arduino/src/oldDrives/SURF_nanoHeating_v2/SURF_nanoHeating_v2.ino:95-96`).
+v2 and v3 (`1d19cc7:firmware/arduino/src/oldDrives/SURF_nanoHeating_v2/SURF_nanoHeating_v2.ino:95-96`).
 Its purpose cannot be established from the repository.
 
 ### 6. Heater gates are undefined while the heating Nano is in reset

@@ -34,7 +34,7 @@ treatment room.
 | `rotation_calibration.ino` | `firmware/tools/rotation_calibration/rotation_calibration.ino` |
 
 Line numbers refer to the release-preparation branch. They are identical to the
-pre-release commit `270cdf5`: the firmware files were only moved, and
+pre-release commit `1d19cc7`: the firmware files were only moved, and
 `terminal.py` differs only by a `main()` wrapper appended at its end and one
 placeholder string.
 
@@ -131,8 +131,8 @@ inside their severity group rather than at the end.
   (:722–747). The firmware is therefore the only guard, and its limits are step
   counts relative to whatever zero is current (KI-06).
 - The same structure existed in the axis firmware in use from 2026-02-16 onward
-  (`SURF_nanoAxis_v1.2.ino` at commits `4f4f576` and `bfb4d67`, renamed to v5 in
-  `e140dbf`).
+  (`SURF_nanoAxis_v1.2.ino` at commits `3f922f5` and `533a9bd`, renamed to v5 in
+  `d7f39ed`).
 
 **Symptom.** An out-of-limits move, or any R move before R has been zeroed in
 the current controller session, produces no motion. The console prints
@@ -147,7 +147,7 @@ continues with its delays and prompts as if the phantom had moved.
 - Analyses that take blueprint targets as nominal positions, or that segment
   tracker data by the expected motion sequence, are wrong for affected runs.
 - **Instance consistent with this defect: *2026-02-24 16:48:07*.**
-  - The blueprint version of that day (commit `bfb4d67`) commands R 0 → +5 → −5 →
+  - The blueprint version of that day (commit `533a9bd`) commands R 0 → +5 → −5 →
     0° at 5°/s between the V section and the final H section. `Pos_R` stays 0.00
     for the whole run.
   - The measured gap from the end of the V section (t = 47.46 s) to the next H
@@ -190,7 +190,7 @@ continues with its delays and prompts as if the phantom had moved.
   - no protocol field (:223–241);
   - no config field;
   - console output is not persisted (:1128–1133).
-- The fallback has existed since at least commit `276a74f` (2026-02-18), where
+- The fallback has existed since at least commit `b732943` (2026-02-18), where
   the message is spelled "Erpzwungene". It therefore covers every main-format
   campaign.
 
@@ -234,7 +234,7 @@ fabricated columns are mixed in the same file.
     motion: *2026-02-17 17:25:15*, *2026-02-17 17:30:52* and
     *2026-02-19 17:26:43*. The cause cannot be determined. Candidates are an axis
     port that did not open, dropped moves (KI-15), or a run aborted before the
-    first move. The terminal commit of 2026-02-18 (`276a74f`) describes an
+    first move. The terminal commit of 2026-02-18 (`b732943`) describes an
     interpreter bug fix; whether that bug is involved is not recorded.
 - A simulated axis next to a live heater gives constant positions with realistic
   temperatures. Without the blueprint and its timing, this cannot be told apart
@@ -265,7 +265,7 @@ fabricated columns are mixed in the same file.
   and HOME_AXIS also go unanswered while the firmware is in alarm state (KI-15).
 - `exit bp` (:1281–1285) stops the interpreter after the current move, but does
   not stop the axis.
-- Since commit `1eb0193` (2026-03-10), every dequeued command blocks the
+- Since commit `76beb9d` (2026-03-10), every dequeued command blocks the
   handshake. Before that only MOVE_AXIS and HOME_AXIS did, so the 60 s stall
   applies from the 2026-03-10 campaign onward.
 
@@ -473,8 +473,8 @@ of the motor shaft.
   only from 2026-08-06 onward (`terminal.py:712`). The controller's homing state
   is never queried.
 - The firmware limits themselves changed between campaigns:
-  - until 2026-02-19 (commit `5527ff8`): H ±35 mm and R ±45°;
-  - from 2026-02-24 (commit `bfb4d67`): H −45 … +25 mm and R −30 … +120°.
+  - until 2026-02-19 (commit `c525676`): H ±35 mm and R ±45°;
+  - from 2026-02-24 (commit `533a9bd`): H −45 … +25 mm and R −30 … +120°.
 
 **Symptom.** A session that was never homed, or whose homing failed, runs normally
 and logs coordinates relative to an arbitrary origin. The firmware soft limits
@@ -526,8 +526,8 @@ feedback is a console line.
   - The config copy used that day was
     `firmware/measurement_pc/etds_qa_2026_config_copy.json` (removed during
     release preparation).
-  - It was committed at 16:18:48 (commit `4ae4536`) in the state still present in
-    `270cdf5`: 1,623 bytes, ending with a trailing comma after entry "8", i.e. not
+  - It was committed at 16:18:48 (commit `9a0adb1`) in the state still present in
+    `1d19cc7`: 1,623 bytes, ending with a trailing comma after entry "8", i.e. not
     valid JSON. That was before the first QA run that selected it.
   - All eight `etds_timestamp` events of runs 16:37:03, 16:55:21, 17:33:50 and
     18:02:57 carry `config_key: null`.
@@ -688,7 +688,7 @@ waiting, or always times out and the operator continues.
 - **The telemetry CSV carries no metadata:** a fixed ten-column header and nothing
   else (:405–410).
 - **The protocol records little provenance.** `MeasurementLog` (:210–335) exists
-  only from commit `baf97ac` (2026-08-06). It records the blueprint file name but
+  only from commit `9338502` (2026-08-06). It records the blueprint file name but
   not its content or hash. It also does not record:
   - the terminal or firmware version;
   - port names or connection state;
@@ -698,8 +698,8 @@ waiting, or always times out and the operator continues.
   - driver status;
   - manual console commands or button presses.
 - **Blueprints were edited in place.** For example, `ETD_QA_BasicPoP.json`
-  commanded ±30 mm and ±30° in commit `4f4f576` (2026-02-16), and ±10 mm and ±5°
-  from `5527ff8` (2026-02-19).
+  commanded ±30 mm and ±30° in commit `3f922f5` (2026-02-16), and ±10 mm and ±5°
+  from `c525676` (2026-02-19).
 - **Logging prefixes are shared.** 16 blueprints (every `SingleCouchRotation*`
   variant in `blueprints/pop/` and `blueprints/heating-off/`) log with the prefix
   `ETD_QA_PoP_SingleCouchOrientation`, and four blueprints share
@@ -762,7 +762,7 @@ occasional gaps. Positions during motion lag their timestamps.
   Median intervals are 0.101–0.109 s. The largest single gap is 1.94 s
   (*2026-07-15 14:29:24*).
 - **February pilot.** The pilot runs, recorded with terminal versions up to
-  `276a74f`, logged at 0.5 s intervals (≈1.97 Hz).
+  `b732943`, logged at 0.5 s intervals (≈1.97 Hz).
 - **Static versus dynamic.** Static dwell positions are unaffected. Dynamic
   comparisons (velocity, lag, tracking during motion) must allow for tens of
   milliseconds of timestamp uncertainty and non-uniform sampling, and must not
@@ -782,12 +782,12 @@ occasional gaps. Positions during motion lag their timestamps.
 
 **Evidence**
 
-- In the axis firmware at commits `276a74f` (2026-02-18) and `5527ff8`
+- In the axis firmware at commits `b732943` (2026-02-18) and `c525676`
   (2026-02-19), the move loop only calls `run()`. It carries the comment "Hier
   optional: weiterhin LOG_DATA senden, falls gewünscht"
   (`firmware/arduino/src/SURF_nanoAxis_v1.2/SURF_nanoAxis_v1.2.ino` in those
   commits).
-- `sendStatusLog()` inside the loop first appears in commit `14f3ef5`
+- `sendStatusLog()` inside the loop first appears in commit `503efe3`
   (2026-02-24 16:37). It is present today at `SURF_nanoAxis_v5.ino:370–373`.
 
 **Symptom.** During every move the log keeps showing the start position. The
@@ -847,7 +847,7 @@ this older firmware is unknown.
   - One division (0.01 mm) at that lever arm is about 0.04°, or 0.6 steps.
   - The correction assumes a constant slack, and that the load never holds the
     gear against one flank. Neither was characterised.
-- The code was added in commit `1eb0193` (2026-03-10 15:02).
+- The code was added in commit `76beb9d` (2026-03-10 15:02).
 
 **Symptom.** Two runs with identical logs can differ physically by about 0.25° in
 R after every reversal, depending on a console command issued earlier in the
@@ -1038,8 +1038,8 @@ phantom is still moving, and hangs without an error message.
   config file. The entry points pass no arguments
   (`software/surf_terminal/__main__.py:1–4`, `pyproject.toml:21–22`).
 - **Unused port detection.** `serial.tools.list_ports` is imported (:24) but never
-  used. Automatic port detection was added and removed twice: commits `1115306` and
-  `7963926` (2026-01-28), and `e45b574` and `30af53d` (2026-02-24).
+  used. Automatic port detection was added and removed twice: commits `4470288` and
+  `d687cd4` (2026-01-28), and `d74cb1c` and `965c5e2` (2026-02-24).
 - **Relative output paths.** Every output is written relative to the process
   working directory: telemetry (:396), `_QA.csv` (:1494), protocols (:1347) and
   plots (`data/plot_<timestamp>.png`, :1180–1182).
@@ -1140,7 +1140,7 @@ blank cells are ambiguous.
 
 **Effect on archived data**
 
-- **Six protocols with mojibake.** In commit `270cdf5`, six protocol pairs of
+- **Six protocols with mojibake.** In commit `1d19cc7`, six protocol pairs of
   2026-08-06 contain "fÃ¼r", "0Â°" and "mÃ¼ssen" in `blueprint_name` and `msg`.
   Their blueprint load times are 16:27:53, 16:37:03, 16:55:21, 17:24:22, 17:33:50
   and 18:02:57. The four of them that record a file path use Windows separators.

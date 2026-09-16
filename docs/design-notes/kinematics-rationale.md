@@ -324,7 +324,7 @@ plainly.
   - The main loop does step all three motors (:280), but no command ever starts
     concurrent moves.
   - The axis firmware has had the same blocking structure since 2026-02-16
-    (commit `4f4f576`).
+    (commit `3f922f5`).
 - **Blueprints.** No blueprint in the repository, or anywhere in its git history,
   contains a `move` step with more than one axis.
 - **Data.** In none of the 118 main-format telemetry files do two axes change over

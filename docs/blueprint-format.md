@@ -857,7 +857,7 @@ Checks the schema cannot express:
    history of the blueprints starts on 2026-03-09. Example: four of the
    `data/raw/2026-02-pilot/ETD_QA_BasicPoP_20260217_*.csv` files contain ±30 mm
    excursions, whereas the earliest committed `ETD_QA_BasicPoP.json` (commit
-   `e140dbf`, 2026-03-09) moves ±10 mm and ±5°. Do not assume that a data file
+   `d7f39ed`, 2026-03-09) moves ±10 mm and ±5°. Do not assume that a data file
    was produced by the blueprint that is in the repository today.
 
 ### Motion
