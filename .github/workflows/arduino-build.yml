@@ -6,6 +6,7 @@ on:
     paths: ["firmware/**"]
   pull_request:
     paths: ["firmware/**"]
+  workflow_dispatch:
 
 jobs:
   compile:

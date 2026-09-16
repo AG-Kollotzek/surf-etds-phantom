@@ -12,7 +12,7 @@ This repository is the **acquisition** half of the project: firmware,
 measurement software, hardware documentation, the measurement-sequence
 definitions, and the phantom-side ground-truth data. The evaluation chain and
 the tracking-system exports live in the companion repository
-[`surf-etds-analysis`](https://github.com/tim-buck/surf-etds-analysis).
+[`surf-etds-analysis`](https://github.com/AG-Kollotzek/surf-etds-analysis).
 
 > **Neither repository alone contains a complete measurement.** The phantom
 > ground truth is here; the tracker output is there.

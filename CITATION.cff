@@ -7,7 +7,7 @@ authors:
     family-names: Buck
     affiliation: "Medical University of Innsbruck"
   # Further contributors to the history are listed in CONTRIBUTORS.md.
-repository-code: "https://github.com/tim-buck/surf-etds-phantom"
+repository-code: "https://github.com/AG-Kollotzek/surf-etds-phantom"
 abstract: >-
   Firmware, measurement software, hardware documentation and ground-truth
   measurement data for the SURF Test Unit: a three-degree-of-freedom motion
@@ -28,7 +28,7 @@ keywords:
 # software; firmware/ is GPL-3.0-or-later and data/ and docs/ are CC-BY-4.0,
 # as set out under license-url.
 license: MIT
-license-url: "https://github.com/tim-buck/surf-etds-phantom/blob/main/README.md#licensing"
+license-url: "https://github.com/AG-Kollotzek/surf-etds-phantom/blob/main/README.md#licensing"
 version: "1.0.0"
 date-released: "2026-09-15"
 references:
@@ -37,7 +37,7 @@ references:
     authors:
       - given-names: Tim
         family-names: Buck
-    repository-code: "https://github.com/tim-buck/surf-etds-analysis"
+    repository-code: "https://github.com/AG-Kollotzek/surf-etds-analysis"
     notes: >-
       Companion repository. Holds the evaluation chain and the ExacTrac-side
       tracking exports. Neither repository alone contains a complete measurement.

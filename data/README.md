@@ -92,7 +92,7 @@ The `TrackingResult_*.json` exports of the ExacTrac Dynamic are not in this
 repository.
 
 - **2026-03-10 (paper campaign):** the 38 exports are in the analysis pipeline,
-  [github.com/tim-buck/surf-etds-analysis](https://github.com/tim-buck/surf-etds-analysis),
+  [github.com/AG-Kollotzek/surf-etds-analysis](https://github.com/AG-Kollotzek/surf-etds-analysis),
   under `paper_data/full_raw/01_json/`. `runs.csv` names the file for each run.
 - **2026-07-15, 2026-07-29, 2026-08-06:** the 20 exports referenced by
   `etds_qa_2026_config.json` are held in the separate clinical-QA repository
@@ -105,7 +105,9 @@ repository.
 The protocols recorded the first names of the staff present: field `personal`
 in `_log.json`, line `Messteam` in `_log.txt`. Before release, these were
 replaced with the role codes `QMP1` and `Student1` to `Student3`. The mapping is
-intentionally not published and is not held in this repository.
+intentionally not published and is not held in this repository. `QMP` stands
+for Qualified Medical Physicist; the number tells people with the same role
+apart.
 
 ## New data from the terminal
 

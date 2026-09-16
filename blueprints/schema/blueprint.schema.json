@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/tim-buck/surf-etds-phantom/main/blueprints/schema/blueprint.schema.json",
+  "$id": "https://raw.githubusercontent.com/AG-Kollotzek/surf-etds-phantom/main/blueprints/schema/blueprint.schema.json",
   "title": "SURF Test Unit measurement blueprint",
   "description": "Schema for the JSON measurement-sequence DSL executed by InterpreterThread.run in software/surf_terminal/terminal.py. Numeric bounds mirror the firmware axis limits in firmware/axis/SURF_nanoAxis_v5/SURF_nanoAxis_v5.ino. See docs/blueprint-format.md; deviations from the interpreter's own tolerance are listed there under 'Schema strictness'.",
 

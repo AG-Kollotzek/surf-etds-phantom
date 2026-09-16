@@ -167,7 +167,7 @@ All position columns are stored in the controller's native sign. Their mapping t
 patient or room coordinates (lateral/longitudinal/vertical, pitch/roll/yaw)
 depends on the phantom set-up and couch angle. It is defined by the kinematic
 model of the analysis pipeline (`kinematics_werror_v2.py` in
-[surf-etds-analysis](https://github.com/tim-buck/surf-etds-analysis)), not by this
+[surf-etds-analysis](https://github.com/AG-Kollotzek/surf-etds-analysis)), not by this
 dataset. Downstream tools flip signs differently: the MATLAB viewer
 `matlab/ETDCombinedJSONCSVViewerApp.m` negates `Pos_H` on load, and the analysis
 pipeline's legacy mode negates `Pos_R`. Never infer a room-coordinate sign from

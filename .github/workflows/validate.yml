@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   data-and-metadata:
@@ -50,14 +51,25 @@ jobs:
       - name: No operator names in measurement protocols
         run: |
           python - <<'PY'
-          import json, pathlib, sys
+          import json, pathlib, re, sys
+          # Operators are recorded as role codes (QMP1, Student1, ...), never as names.
+          CODES = re.compile(r"\s*(QMP|RTT|Student)[1-9][0-9]?(\s*,\s*(QMP|RTT|Student)[1-9][0-9]?)*\s*")
           bad = []
-          for p in sorted(pathlib.Path('data').rglob('*_log.json')):
-              v = json.loads(p.read_text(encoding='utf-8')).get('personal')
-              if v and not all(part.strip().startswith('Operator') for part in v.split(',')):
-                  bad.append(p)
-          for p in bad:
-              print(f"::error file={p}::'personal' is not pseudonymised (expected 'Operator X')")
+          for p in sorted(pathlib.Path('.').rglob('*_log.*')):
+              if '.git' in p.parts or p.suffix not in ('.json', '.txt'):
+                  continue
+              text = p.read_text(encoding='utf-8')
+              if p.suffix == '.json':
+                  values = [json.loads(text).get('personal')]
+              else:
+                  values = [m.group(1) for m in re.finditer(r'^Messteam\s*:\s*(.*)$', text, re.M)]
+              for v in values:
+                  if v in (None, '', '-'):
+                      continue
+                  if not isinstance(v, str) or not CODES.fullmatch(v):
+                      bad.append((p, v))
+          for p, v in bad:
+              print(f"::error file={p}::operator field is not a role code list (expected e.g. 'QMP1, Student1')")
           sys.exit(1 if bad else 0)
           PY
 

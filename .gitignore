@@ -42,3 +42,6 @@ matlab_crash_dump.*
 
 # --- Derived measurement output (regenerable from the raw CSV) ---
 data/**/plot_*.png
+
+# --- Terminal output when started from software/ (release data lives in data/raw/) ---
+software/data/

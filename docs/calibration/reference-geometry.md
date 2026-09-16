@@ -10,7 +10,7 @@ reading results obtained with it:
 
 Both were derived during pre-publication review from the exported evaluation
 files of the analysis repository
-[`surf-etds-analysis`](https://github.com/tim-buck/surf-etds-analysis), as they
+[`surf-etds-analysis`](https://github.com/AG-Kollotzek/surf-etds-analysis), as they
 stood on 15 September 2026. The computation is described below
 so it can be repeated; it is not part of this repository.
 

@@ -13,4 +13,6 @@ named in the [README](README.md#licensing).
 
 Measurement protocols (`data/raw/**/*_log.json`, `*_log.txt`) originally recorded
 the first names of the staff present. These were replaced with role codes
-`QMP1` and `Student1` to `Student3` before release. The mapping is not published.
+`QMP1` and `Student1` to `Student3` before release. `QMP` stands for Qualified
+Medical Physicist; the number tells people with the same role apart. The mapping
+is not published.

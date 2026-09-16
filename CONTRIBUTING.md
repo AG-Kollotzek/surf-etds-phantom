@@ -28,7 +28,7 @@ mass inside a radiotherapy treatment room.
 
 Do not commit measurement data that has not been through the release checks:
 the `personal` field in `_log.json` and `Messteam` in `_log.txt` must carry
-operator codes, not names. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
+role codes such as `QMP1` or `Student1`, not names. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
 Do not commit generated plots (`plot_*.png`) — they are regenerable from the
 raw CSV and are git-ignored.

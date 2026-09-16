@@ -2,7 +2,7 @@ SURF Test Unit ground-truth measurement data
 Copyright (c) 2025-2026 Tim Buck and the SURF Test Unit contributors
 
 This licence applies to the contents of the data/ directory of the
-surf-etds-phantom repository (https://github.com/tim-buck/surf-etds-phantom): the
+surf-etds-phantom repository (https://github.com/AG-Kollotzek/surf-etds-phantom): the
 measurement campaigns in data/raw/, including data/raw/2026-03-10/runs.csv,
 and the linkage table data/etds_qa_2026_config.json. Other directories of
 the repository carry their own licences; see the licensing section of the
