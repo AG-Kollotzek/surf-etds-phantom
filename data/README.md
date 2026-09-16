@@ -95,8 +95,8 @@ repository.
   [github.com/AG-Kollotzek/surf-etds-analysis](https://github.com/AG-Kollotzek/surf-etds-analysis),
   under `paper_data/full_raw/01_json/`. `runs.csv` names the file for each run.
 - **2026-07-15, 2026-07-29, 2026-08-06:** the 20 exports referenced by
-  `etds_qa_2026_config.json` are held in the separate clinical-QA repository
-  `lki_etds_qa2026`, not in surf-etds-analysis.
+  `etds_qa_2026_config.json` are held in the project's separate clinical-QA
+  repository, which is not public yet, not in surf-etds-analysis.
 - **All other campaigns:** whether tracker exports exist is not determinable
   from the archive.
 

@@ -77,7 +77,7 @@ data/raw/2026-03-10/runs.csv    csv_file, etd_file
 | raw CSV | `_QA.csv` | identical stem, then `Time_Sec` | Both use the same `time.perf_counter()` origin. Use a nearest-sample or as-of join, not an exact match. |
 | protocol | raw CSV | `csv_file` inside the JSON | The file stems differ (§9.2). |
 | config entry | raw CSV | `surf_timestamp` = `HHMMSS` of the raw file name | The key has no date. Resolve it against file names; all 9 values are unique in this archive. |
-| config entry | ExacTrac export | `etds_timestamp` = `HHMMSS` in `TrackingResult_<date>_HH-MM-SS.json` | The exports are **not in this repository**. The 20 referenced here are held in the separate clinical-QA repository `lki_etds_qa2026`. |
+| config entry | ExacTrac export | `etds_timestamp` = `HHMMSS` in `TrackingResult_<date>_HH-MM-SS.json` | The exports are **not in this repository**. The 20 referenced here are held in the project's separate clinical-QA repository, which is not public yet. |
 | `runs.csv` row | raw CSV, ExacTrac export | `csv_file`, `etd_file` | 2026-03-10 only. |
 
 ---
@@ -379,7 +379,7 @@ below, which are also the fields of a protocol's `config_entries[]`.
 | `deflection` | int | 1 = first end position (`endposition_d1`, formerly `minVerschub`); 2 = second (`endposition_d2`, formerly `MaxVerschub`). |
 | `meas_couch_type` | string | `single angle` or `multi angle`. |
 | `heatingpads` | string | `OFF` or `32` (session metadata; see §9.8). |
-| `etds_timestamp` | string `HHMMSS` | Time in the name of the ExacTrac export `TrackingResult_<date>_HH-MM-SS.json`. The exports are not in this repository; all 20 are in `lki_etds_qa2026`, under `data/raw/L<linac>/etds_scans/`. |
+| `etds_timestamp` | string `HHMMSS` | Time in the name of the ExacTrac export `TrackingResult_<date>_HH-MM-SS.json`. The exports are not in this repository; all 20 are in the project's clinical-QA repository (not public yet), under `data/raw/L<linac>/etds_scans/`. |
 | `surf_timestamp` | string `HHMMSS` | `HHMMSS` of the raw CSV. |
 | `couch_angle` | int | Couch angle in degrees (0 or −90). |
 
@@ -406,7 +406,7 @@ previously the only record of which file belongs to which condition.
 
 | Column | Meaning |
 |---|---|
-| `run_id` | Key in `MEASUREMENT_10032026`. This is also the run number ("Messung") in the handwritten measurement protocol of the campaign: all 32 CSV/ETD number pairs agree with it. The analysis labels runs `meas_<NN>`. Empty for files not in the dict. Numbers 13, 20, 23 and 36 are protocol runs outside the evaluated set. |
+| `run_id` | Key in `MEASUREMENT_10032026`. This is also the run number ("Messung") in the measurement protocol of the campaign: all 32 CSV/ETD number pairs agree with it. The analysis labels runs `meas_<NN>`. Empty for files not in the dict. Numbers 13, 20, 23 and 36 are protocol runs outside the evaluated set. |
 | `csv_file` | File name of the raw telemetry CSV in this folder. |
 | `etd_file` | ExacTrac tracking export for the run, resolved from the dict's `ETD` code exactly as the pipeline does. The file lives in `paper_data/full_raw/01_json/` of surf-etds-analysis, not here. Empty for unused files. |
 | `group` | The dict's `Gruppe`, verbatim, because it is a grouping key in the pipeline. Values: `All axes` (H, then V, then R, sequentially), `Horizontal`, `Vertical`, `Rotation`, `Variable_Geschwindigkeit` (variable rotation speed), `Vertical_Slide` (H motion with V at +50 mm, which tilts the phantom). |
@@ -416,7 +416,7 @@ previously the only record of which file belongs to which condition.
 | `used_in_analysis` | `true` for the 32 dict entries, `false` otherwise. |
 | `note` | For unused files, the reason for exclusion **where the repositories establish one**. For run 34, a verified structural caveat. An empty `note` means no reason is recorded; it does not mean the file is valid. |
 | `blueprint` | Blueprint file named for the run's series in the protocol, checked against the file's logging prefix and dwell sequence. Empty where the protocol names none or where the check fails (run 23). Five of the six names also exist in `blueprints/pop/` (with a 32 °C `heat` step) as well as in `blueprints/heating-off/`; which copy was loaded is **not determinable from the archive**. The move and delay steps of both copies are identical to the repository state of 2026-03-10. |
-| `protocol_remark` | Run-specific remarks from the handwritten protocol (German, `Messung_Protokoll_10_03_2026.pdf` in surf-etds-analysis), translated. Text in square brackets marks where the protocol conflicts with the files. |
+| `protocol_remark` | Run-specific remarks from the measurement protocol (German, `Messung_Protokoll_10_03_2026.pdf` in surf-etds-analysis), translated. Text in square brackets marks where the protocol conflicts with the files. |
 
 ---
 
