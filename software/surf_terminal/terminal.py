@@ -13,10 +13,10 @@ import json
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFileDialog
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QFrame, QTextEdit, QPushButton, QGridLayout, QMessageBox, QDialog, QFormLayout, QDialogButtonBox,
+    QLabel, QLineEdit, QFrame, QTextEdit, QPushButton, QMessageBox, QDialog, QFormLayout, QDialogButtonBox,
     QInputDialog
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -481,7 +481,7 @@ class AxisThread(QThread):
                             with state.lock:
                                 state.axis_ready = True
                             self.log_msg.emit(">> Achse: Bewegung abgeschlossen.")
-                    except Exception as e:
+                    except Exception:
                         ser.reset_input_buffer()
 
                 # 2. Senden
@@ -579,7 +579,7 @@ class HeatThread(QThread):
                                         else:
                                             state.stable[p] = False
 
-                        except Exception as e:
+                        except Exception:
                             # Puffer leeren bei einem Lesefehler / Timeout
                             # print(f"Heat Read Error: {e}")
                             ser.reset_input_buffer()

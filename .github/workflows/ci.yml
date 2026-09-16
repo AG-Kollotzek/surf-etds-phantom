@@ -34,5 +34,5 @@ jobs:
         working-directory: software
       - name: Lint
         run: |
-          pip install ruff
+          pip install ruff==0.16.7
           ruff check software/

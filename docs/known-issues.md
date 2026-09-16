@@ -464,7 +464,7 @@ of the motor shaft.
     arbitrary value.
   - The PC still prints ">> Achse: Bewegung abgeschlossen." (`terminal.py:483`).
 - R zero is whatever angle the phantom has when `h r` or `set r zero` is issued
-  (:392–397, :420–424). There is no mechanical reference (README.md:103).
+  (:392–397, :420–424). There is no mechanical reference (README.md:104).
 - Step counters are held in RAM and restart at 0 on every controller reset. The
   terminal opens both ports at every start (`terminal.py:450`, :545), which
   typically resets a Nano.
@@ -1146,7 +1146,7 @@ blank cells are ambiguous.
   and 18:02:57. The four of them that record a file path use Windows separators.
   The one protocol of that day with POSIX separators (15:19:55) is clean.
 - **Repaired copies.** The mojibake was repaired during release preparation
-  (CHANGELOG.md:36). The archived protocols therefore differ from the originals in
+  (CHANGELOG.md:41). The archived protocols therefore differ from the originals in
   this respect only.
 - **Numeric data unaffected.** Every point ID, mode and prefix in the blueprints is
   ASCII, and the main-format telemetry and `_QA.csv` files contain only ASCII.
@@ -1234,7 +1234,7 @@ blank cells are ambiguous.
   "ActiveLow Endstops" (:5).
   - The code treats HIGH as triggered (:127). That is correct for normally closed
     switches to ground with `INPUT_PULLUP`, which is what the README describes
-    (README.md:101–102).
+    (README.md:102–103).
   - Changing the code to match the comment would invert endstop detection during
     homing.
 - **Stability window.** The comment "20 Sek" (`terminal.py:353`) contradicts the

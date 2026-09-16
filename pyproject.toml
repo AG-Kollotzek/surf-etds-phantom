@@ -39,3 +39,4 @@ target-version = "py311"
 [tool.ruff.lint]
 # The measurement terminal is legacy clinical code; lint for correctness, not style.
 select = ["E4", "E7", "E9", "F"]
+ignore = ["E701"]  # one-line `if x: return` bodies are style, not correctness

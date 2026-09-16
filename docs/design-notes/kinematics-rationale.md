@@ -8,7 +8,7 @@ about repository contents refer to that state.
 
 **Provenance.** The note supersedes `docs/PoPargumentation&blueprints.txt`, an
 informal German discussion note that was removed during release preparation
-(CHANGELOG.md:47–48). Sections 2–8 restate that note's arguments and tighten
+(CHANGELOG.md:52–53). Sections 2–8 restate that note's arguments and tighten
 them. Where the repository contradicts or does not support a point, we say so.
 Section 9 is new.
 
@@ -21,8 +21,8 @@ location; paths are relative to the repository root.
 | Axis | Motion | Range | Resolution | Notes |
 |---|---|---|---|---|
 | H | Horizontal slide | −45 … +25 mm (`SURF_nanoAxis_v5.ino:55–58`) | 800 steps/mm (:39) | |
-| V | Vertical slide | −35 … +50 mm (:61–64) | 800 steps/mm (:39) | Moves the phantom vertically and tilts it about a horizontal axis at the same time (README.md:102). The protocol of 2026-03-10 describes a V = +50 mm start as "tilt needed" (`data/raw/2026-03-10/runs.csv:25`). |
-| R | Rotation stage, driven through a 1:2 bevel gear (README.md:103) | −30 … +120° (`SURF_nanoAxis_v5.ino:67–70`) | 16.156 steps/° (:40) | No endstop; the zero is set wherever the stage stands (:392–397, :420–424). |
+| V | Vertical slide | −35 … +50 mm (:61–64) | 800 steps/mm (:39) | Moves the phantom vertically and tilts it about a horizontal axis at the same time (README.md:103). The protocol of 2026-03-10 describes a V = +50 mm start as "tilt needed" (`data/raw/2026-03-10/runs.csv:25`). |
+| R | Rotation stage, driven through a 1:2 bevel gear (README.md:104) | −30 … +120° (`SURF_nanoAxis_v5.ino:67–70`) | 16.156 steps/° (:40) | No endstop; the zero is set wherever the stage stands (:392–397, :420–424). |
 
 Speeds are capped at 50 mm/s for H and V and at 90°/s for R (:42–43). On H and V
 this cap never engages, because step generation saturates at about 5 mm/s
